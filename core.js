@@ -1,7 +1,18 @@
-export const VERSION = 2;
+export const VERSION = 3;
 export const MAX_RECORDS = 20000;
 export const MAX_FILE = 12 * 1024 * 1024;
-export const TYPES = ['narrative', 'moment', 'daily', 'medication', 'caffeine', 'diet', 'activity', 'symptom', 'occurrence', 'screening'];
+export const TYPES = ['narrative', 'moment', 'daily', 'sleep', 'checkin', 'medication', 'caffeine', 'diet', 'activity', 'symptom', 'occurrence', 'screening'];
+export const ACTIVITY_GROUPS=[
+ {id:'exercise',label:'运动',categories:[{id:'exercise.aerobic',label:'有氧运动'},{id:'exercise.strength',label:'力量训练'},{id:'exercise.mobility',label:'拉伸与活动度'},{id:'exercise.mindbody',label:'身心运动'},{id:'exercise.other',label:'其他运动'}]},
+ {id:'outdoor',label:'户外',categories:[{id:'outdoor.walk',label:'散步'},{id:'outdoor.sunlight',label:'晒太阳'},{id:'outdoor.outing',label:'外出活动'},{id:'outdoor.other',label:'其他户外活动'}]},
+ {id:'social',label:'社交与独处',categories:[{id:'social.in-person',label:'线下交流'},{id:'social.call',label:'电话交流'},{id:'social.online',label:'线上交流'},{id:'social.group',label:'集体活动'},{id:'social.alone',label:'独处'},{id:'social.other',label:'其他社交情境'}]},
+ {id:'relationship',label:'关系事件',categories:[{id:'relationship.conversation',label:'交谈'},{id:'relationship.together',label:'相伴'},{id:'relationship.disagreement',label:'意见不同'},{id:'relationship.support',label:'获得或给予支持'},{id:'relationship.space',label:'需要一些空间'},{id:'relationship.other',label:'其他关系事件'}]},
+ {id:'game',label:'游戏',categories:[{id:'game.casual',label:'休闲游戏'},{id:'game.strategy',label:'策略游戏'},{id:'game.action',label:'动作游戏'},{id:'game.roleplay',label:'角色扮演'},{id:'game.simulation',label:'模拟游戏'},{id:'game.other',label:'其他游戏'}]},
+ {id:'other',label:'其他活动',categories:[{id:'other.work',label:'工作'},{id:'other.chore',label:'家务'},{id:'other.learning',label:'学习'},{id:'other.creative',label:'创作'},{id:'other.other',label:'其他活动'}]},
+];
+export const DIET_CATEGORIES=[{id:'staple',label:'主食'},{id:'vegetable',label:'蔬菜'},{id:'fruit',label:'水果'},{id:'protein',label:'肉蛋豆等'},{id:'dairy',label:'乳品'},{id:'snack',label:'零食与甜点'},{id:'mixed',label:'混合餐食'},{id:'water',label:'水'},{id:'other-drink',label:'其他饮品'},{id:'other',label:'其他饮食'}];
+export const QUANTITY_UNITS=[{id:'g',label:'克'},{id:'ml',label:'毫升'},{id:'portion',label:'份'},{id:'piece',label:'个 / 块'},{id:'bowl',label:'碗'},{id:'cup',label:'杯'},{id:'other',label:'自定义单位'}];
+const customCategory=id=>typeof id==='string'&&/^custom-[A-Za-z0-9_-]{8,73}$/.test(id);
 export const TOPICS = ['感受','饮食','咖啡与茶','用药','睡眠','运动','情感与关系','社交与独处'];
 export const MOODS = ['低落', '偏低', '平常', '不错', '愉快'];
 export const RATING_ORIGINS=['explicit-number','estimated-language','relative-baseline','user-slider','edited-suggestion','legacy-unclassified','unset'];
@@ -20,10 +31,10 @@ export const FUNCTIONAL_OPTIONS=['一点也不困难','有点困难','非常困�
 const PHQ_ITEMS=['做事没有兴趣或愉悦感','感觉低落、郁闷或没有希望','很难入睡或容易醒，或睡眠过多','感觉疲劳或没有精力','食欲不佳或饮食过量','自我感觉差——或觉得自己很失败，或令自己或家人失望','做事很难集中注意力，比如阅读报纸或看电视','行动或说话过于迟缓，以致他人能够觉察到了，或正好相反——过于多动或不安分以致活动比平常要多得多','觉得自己死掉会更好，或想以某种方式伤害自己'];
 const GAD_ITEMS=['感到紧张、焦虑或不安','无法停止或控制的忧虑','对各种事情过于担心','很难放松','过于焦躁不安，以致难以平静地坐着','容易恼怒或被激惹','害怕会发生不好的事情'];
 export const SCREENERS=[
- {id:'phq2',label:'PHQ-2',title:'快速筛查 · 抑郁症状',items:PHQ_ITEMS.slice(0,2),cutpoints:[3],version:SCALE_SOURCE.version,page:50},
- {id:'gad2',label:'GAD-2',title:'快速筛查 · 焦虑症状',items:GAD_ITEMS.slice(0,2),cutpoints:[3],version:SCALE_SOURCE.version,page:52},
- {id:'phq9',label:'PHQ-9',title:'阶段评估 · 抑郁症状',items:PHQ_ITEMS,cutpoints:[5,10,15,20],version:SCALE_SOURCE.version,page:50},
- {id:'gad7',label:'GAD-7',title:'阶段评估 · 焦虑症状',items:GAD_ITEMS,cutpoints:[5,10,15],version:SCALE_SOURCE.version,page:52},
+ {id:'phq2',label:'PHQ-2',title:'简短工具 · 抑郁症状',items:PHQ_ITEMS.slice(0,2),cutpoints:[3],recallDays:14,version:SCALE_SOURCE.version,page:50},
+ {id:'gad2',label:'GAD-2',title:'简短工具 · 焦虑症状',items:GAD_ITEMS.slice(0,2),cutpoints:[3],recallDays:14,version:SCALE_SOURCE.version,page:52},
+ {id:'phq9',label:'PHQ-9',title:'快速筛查 · 抑郁症状',items:PHQ_ITEMS,cutpoints:[5,10,15,20],recallDays:14,version:SCALE_SOURCE.version,page:50},
+ {id:'gad7',label:'GAD-7',title:'快速筛查 · 焦虑症状',items:GAD_ITEMS,cutpoints:[5,10,15],recallDays:14,version:SCALE_SOURCE.version,page:52},
 ];
 
 export function ratingDescription(kind,value){
@@ -111,6 +122,17 @@ function text(value, name, limit, required = false) {
   assert(!required || result.length > 0, `请填写${name}`);
   return result;
 }
+function verbatimText(value,name,limit,required=false){text(value,name,limit,required);assert(value.length<=limit,`${name}最多 ${limit} 字`);return value;}
+function categoryFields(input,r){
+ if(!['activity','diet'].includes(r.type)||!['categoryId','categoryLabel','groupId'].some(k=>Object.hasOwn(input,k)))return;
+ const id=text(input.categoryId,'分类标识',80,true);let builtin;
+ if(r.type==='activity'){
+  const group=ACTIVITY_GROUPS.find(g=>g.id===input.groupId);assert(group,'请选择活动大类');
+  builtin=group.categories.find(c=>c.id===id);assert(builtin||customCategory(id),'活动分类与大类不一致');r.groupId=group.id;
+ }else {assert(!Object.hasOwn(input,'groupId'),'饮食分类不使用活动大类');builtin=DIET_CATEGORIES.find(c=>c.id===id);assert(builtin||customCategory(id),'饮食分类标识无效');}
+ r.categoryId=id;r.categoryLabel=verbatimText(input.categoryLabel??builtin?.label??'','分类名称',80,true);
+}
+function validateNapsForDay(details,r){for(const nap of details.naps){const day=new Date(Date.parse(nap.startAt)-r.timezoneOffsetMinutes*60000).toISOString().slice(0,10);assert(day===r.localDate,'补觉开始日期需与这份睡眠记录一致，请按实际日期分开记录。');}}
 function numeric(value, name, min, max, optional = true, integer = false) {
   if (value === null && optional) return null;
   assert(typeof value === 'number' && Number.isFinite(value), `请填写有效的${name}`);
@@ -159,15 +181,15 @@ export function validateRecord(input) {
     for(const f of r.fragments)assert(r.originalText.includes(f.quote),'整理片段必须来自原话');
   }
   if (r.type === 'daily') Object.assign(r, {
-    mood: numeric(input.mood, '心情', 0, 4, true, true),
-    sleepHours: numeric(input.sleepHours, '睡眠时长', 0, 24),
-    exerciseMinutes: numeric(input.exerciseMinutes, '运动分钟', 0, 1440),
-    diet: text(input.diet, '饮食记录', 3000),
-    note: text(input.note, '今日随笔', 3000),
-    medicationStatus: choice(input.medicationStatus, ['unknown', 'none', 'some'], '当日用药情况'),
-    caffeineStatus: choice(input.caffeineStatus, ['unknown', 'none', 'some'], '当日咖啡因情况'),
-    relationshipNote: text(input.relationshipNote ?? '', '情感与关系', 3000),
-    socialNote: text(input.socialNote ?? '', '社交与独处', 3000),
+    mood: numeric(input.mood??null, '心情', 0, 4, true, true),
+    sleepHours: numeric(input.sleepHours??null, '睡眠时长', 0, 24),
+    exerciseMinutes: numeric(input.exerciseMinutes??null, '运动分钟', 0, 1440),
+    diet: verbatimText(input.diet??'', '饮食记录', 3000),
+    note: verbatimText(input.note??'', '今日随笔', 3000),
+    medicationStatus: choice(input.medicationStatus??'unknown', ['unknown', 'none', 'some'], '当日用药情况'),
+    caffeineStatus: choice(input.caffeineStatus??'unknown', ['unknown', 'none', 'some'], '当日咖啡因情况'),
+    relationshipNote: verbatimText(input.relationshipNote ?? '', '情感与关系', 3000),
+    socialNote: verbatimText(input.socialNote ?? '', '社交与独处', 3000),
   });
   if (r.type === 'medication') Object.assign(r, {
     name: text(input.name, '药物名称', 120, true),
@@ -177,6 +199,7 @@ export function validateRecord(input) {
     use: choice(input.use, ['regular','as-needed'], '用药方式'),
     reason: text(input.reason, '用药原因', 1000),
   });
+  if(r.type==='medication'&&Object.hasOwn(input,'route'))r.route=verbatimText(input.route,'用药途径',120);
   if (r.type === 'caffeine') Object.assign(r, {
     drink: choice(input.drink, ['coffee','tea','energy','other'], '饮品类型'),
     name: text(input.name, '饮品名称', 120),
@@ -186,28 +209,42 @@ export function validateRecord(input) {
     note: text(input.note, '饮品备注', 1000),
   });
   if (r.type === 'diet') Object.assign(r, {
-    category: text(input.category, '饮食分类', 60, true),
-    name: text(input.name, '食物或饮品', 120, true),
-    amount: numeric(input.amount, '食用量', 0.000001, 1000000),
-    unit: text(input.unit, '食用量单位', 30, input.amount !== null),
-    note: text(input.note, '饮食备注', 1000),
+    category: verbatimText(input.category??input.categoryLabel??DIET_CATEGORIES.find(c=>c.id===input.categoryId)?.label??'', '饮食分类', 80, true),
+    name: verbatimText(input.name, '食物或饮品', 120, true),
+    amount: numeric(input.amount??null, '食用量', 0.000001, 1000000),
+    unit: verbatimText(input.unit??'', '食用量单位', 30, input.amount !== null&&input.amount!==undefined),
+    note: verbatimText(input.note??'', '饮食备注', 1000),
   });
+  if(r.type==='diet'&&Object.hasOwn(input,'quantity')){
+    r.quantity=numeric(input.quantity,'饮食数量',0,1000000);
+    r.quantityUnit=input.quantityUnit===null||input.quantityUnit===undefined||input.quantityUnit===''?null:choice(input.quantityUnit,QUANTITY_UNITS.map(u=>u.id),'数量单位');
+    assert(r.quantity===null||r.quantityUnit!==null,'请为数量选择单位');
+    if(r.quantityUnit==='other')r.quantityUnitLabel=verbatimText(input.quantityUnitLabel??'','自定义单位',30,true);
+    else if(Object.hasOwn(input,'quantityUnitLabel'))r.quantityUnitLabel=verbatimText(input.quantityUnitLabel??'','单位说明',30);
+  }
   if(['moment','daily','narrative'].includes(r.type)){
     if(Object.hasOwn(input,'lowMood'))r.lowMood=numeric(input.lowMood,'低落感',0,10,true,true);
     if(r.type==='daily'&&Object.hasOwn(input,'anxiety'))r.anxiety=numeric(input.anxiety,'不安感',0,10,true,true);
     if(input.ratingProvenance){r.ratingProvenance={};for(const kind of ['anxiety','lowMood'])if(input.ratingProvenance[kind])r.ratingProvenance[kind]=validateProvenance(input.ratingProvenance[kind],r[kind]);}
   }
   if(r.type==='daily'){
-    if(input.sleepDetails){r.sleepDetails=validateSleep(input.sleepDetails);for(const nap of r.sleepDetails.naps){const day=new Date(Date.parse(nap.startAt)-r.timezoneOffsetMinutes*60000).toISOString().slice(0,10);assert(day===r.localDate,'补觉开始日期需与这份每日小记一致，请按实际日期分开记录。');}}
+    if(input.sleepDetails){r.sleepDetails=validateSleep(input.sleepDetails);validateNapsForDay(r.sleepDetails,r);}
     for(const metric of ['anxietyOccurrence','lowMoodOccurrence'])if(Object.hasOwn(input,metric))r[metric]=choice(input[metric],['unknown','yes','no'],'当天是否出现');
     if(input.occurrenceScope)r.occurrenceScope=choice(input.occurrenceScope,['so-far','whole-day'],'当天记录范围');
     assert(r.mood!==null||r.sleepHours!==null||r.exerciseMinutes!==null||r.diet||r.note||r.relationshipNote||r.socialNote||r.medicationStatus!=='unknown'||r.caffeineStatus!=='unknown'||Number.isFinite(r.anxiety)||Number.isFinite(r.lowMood)||(r.anxietyOccurrence&&r.anxietyOccurrence!=='unknown')||(r.lowMoodOccurrence&&r.lowMoodOccurrence!=='unknown')||(r.sleepDetails&&Object.entries(r.sleepDetails).some(([k,v])=>k==='naps'?v.length:typeof v==='number'||(['nightmares','grinding','snoring','subjective'].includes(k)&&v!=='unknown'))),'写下一项就好，也可以稍后再来');
   }
+  if(r.type==='sleep'){
+    r.wakeDate=verbatimText(input.wakeDate??r.localDate,'醒来日期',10,true);assert(r.wakeDate===r.localDate,'睡眠按醒来日期记录');
+    r.sleepHours=numeric(input.sleepHours??null,'夜间睡眠时长',0,24);r.sleepDetails=validateSleep(input.sleepDetails);validateNapsForDay(r.sleepDetails,r);r.note=verbatimText(input.note??'','睡眠随记',3000);
+    assert(r.sleepHours!==null||r.note||Object.entries(r.sleepDetails).some(([k,v])=>k==='naps'?v.length:typeof v==='number'||(['nightmares','grinding','snoring','subjective'].includes(k)&&v!=='unknown')),'记录一项睡眠感受即可');
+  }
+  if(r.type==='checkin')Object.assign(r,{domain:choice(input.domain,['caffeine','medication','activity'],'记录范围'),status:choice(input.status,['none','some'],'当天情况'),scope:choice(input.scope,['so-far','whole-day'],'记录时间范围'),note:verbatimText(input.note??'','情况备注',1000)});
   if(r.type==='occurrence')Object.assign(r,{anxietyOccurrence:choice(input.anxietyOccurrence,['unknown','yes','no'],'焦虑出现情况'),lowMoodOccurrence:choice(input.lowMoodOccurrence,['unknown','yes','no'],'低落出现情况'),occurrenceScope:choice(input.occurrenceScope,['so-far','whole-day'],'记录范围'),note:text(input.note??'','当天情况备注',1000)});
   if(r.type==='activity'){
-    assert(Array.isArray(input.tags)&&input.tags.length>0&&input.tags.length<=6,'请至少选择一种活动');
-    Object.assign(r,{tags:[...new Set(input.tags.map(t=>choice(t,['exercise','walk','outdoor','sunlight','game','other'],'活动标签')))],name:text(input.name??'','活动类型',120),durationMinutes:numeric(input.durationMinutes,'活动分钟',1,1440,false),intensity:choice(input.intensity??'unknown',['unknown','light','moderate','vigorous'],'活动强度'),startAt:input.startAt?dateValue(input.startAt,'活动开始时刻'):null,note:text(input.note??'','活动随记',3000)});
+    assert(Array.isArray(input.tags)&&input.tags.length>0&&input.tags.length<=8,'请至少选择一种活动');
+    Object.assign(r,{tags:[...new Set(input.tags.map(t=>choice(t,['exercise','walk','outdoor','sunlight','game','social','relationship','other'],'活动标签')))],name:verbatimText(input.name??'','活动类型',120),durationMinutes:numeric(input.durationMinutes,'活动分钟',1,1440,false),intensity:choice(input.intensity??'unknown',['unknown','light','moderate','vigorous'],'活动强度'),startAt:input.startAt?dateValue(input.startAt,'活动开始时刻'):null,note:verbatimText(input.note??'','活动随记',3000)});
   }
+  categoryFields(input,r);
   if(r.type==='symptom'){
     Object.assign(r,{name:text(input.name,'身体感受',120,true),site:text(input.site??'','部位',120),intensity:numeric(input.intensity??null,'不适强度',0,10,true,true),startAt:input.startAt?dateValue(input.startAt,'开始时间'):null,endAt:input.endAt?dateValue(input.endAt,'结束时间'):null,note:text(input.note??'','身体感受原话',3000)});
     if(r.startAt)assert(Date.parse(r.startAt)<=Date.now()+5*60000,'开始时间不能在未来');
@@ -227,48 +264,60 @@ export function validateRecord(input) {
     assert(Array.isArray(input.answers)&&input.answers.length===spec.items.length,'量表答案数量不正确');
     const answers=input.answers.map(v=>numeric(v,'量表选项',0,3,true,true));
     const result=scoreScreener(spec.id,answers);
-    Object.assign(r,{scaleId:spec.id,scaleVersion:spec.version,answers,total:result.total,recallDays:14,windowStart:text(input.windowStart,'回顾起始日期',10,true),windowEnd:text(input.windowEnd,'回顾结束日期',10,true),functionalImpairment:input.functionalImpairment===null?null:numeric(input.functionalImpairment??null,'功能影响',0,3,true,true)});
-    assert(r.windowEnd===r.localDate&&r.windowStart===shiftDay(r.windowEnd,-13),'量表回顾窗必须为评估日及此前 13 天');
+    const recallDays=spec.recallDays??14;
+    Object.assign(r,{scaleId:spec.id,scaleVersion:spec.version,answers,total:result.total,recallDays,windowStart:text(input.windowStart,'回顾起始日期',10,true),windowEnd:text(input.windowEnd,'回顾结束日期',10,true),functionalImpairment:input.functionalImpairment===null?null:numeric(input.functionalImpairment??null,'功能影响',0,3,true,true)});
+    if(input.recallDays!==undefined)assert(input.recallDays===recallDays,'回顾天数与量表版本不一致');
+    assert(r.windowEnd===r.localDate&&r.windowStart===shiftDay(r.windowEnd,-(recallDays-1)),`量表回顾窗必须为评估日及此前 ${recallDays-1} 天`);
   }
-  if(input.schemaVersion!==undefined)r.schemaVersion=choice(input.schemaVersion,[2],'记录版本');
-  if(input.entryProvenance){const p=input.entryProvenance;r.entryProvenance={mode:choice(p.mode,['contemporaneous','retrospective'],'填写方式'),timeMeaning:choice(p.timeMeaning,['event','log-time','day-anchor','assessment'],'时间含义'),source:choice(p.source,['manual','narrative-reviewed','quick-checkin','screening'],'记录入口')};}
+  if(input.schemaVersion!==undefined)r.schemaVersion=choice(input.schemaVersion,[2,3],'记录版本');
+  if(input.entryProvenance){const p=input.entryProvenance;r.entryProvenance={mode:choice(p.mode,['contemporaneous','retrospective'],'填写方式'),timeMeaning:choice(p.timeMeaning,['event','log-time','day-anchor','assessment'],'时间含义'),source:choice(p.source,['manual','narrative-reviewed','narrative-structured-confirmed','quick-checkin','screening'],'记录入口')};}
+  if(Object.hasOwn(input,'sourceNarrativeId')||Object.hasOwn(input,'sourceFragmentKey')){
+    assert(!['narrative','screening'].includes(r.type),'原始叙述和量表不能作为已整理子记录');
+    r.sourceNarrativeId=verbatimText(input.sourceNarrativeId??'','原始叙述标识',80,true);assert(/^[A-Za-z0-9_-]{1,80}$/.test(r.sourceNarrativeId),'原始叙述标识格式不正确');
+    r.sourceFragmentKey=verbatimText(input.sourceFragmentKey??'','原话片段标识',7000,true);assert(r.sourceFragmentKey.indexOf('|')>0&&r.sourceFragmentKey.indexOf('|')<r.sourceFragmentKey.length-1,'原话片段标识需包含范围和原话');
+  }
+  if(r.entryProvenance?.source==='narrative-structured-confirmed')assert(r.sourceNarrativeId&&r.sourceFragmentKey,'确认整理后的记录需保留原始叙述和片段标识');
   return r;
 }
 export function makeRecord(type, data, previous = null) {
   const now = new Date().toISOString();
   const date = new Date(data.time);
   assert(Number.isFinite(date.getTime()), '请填写有效的时间');
-  const unchangedTime=previous && (type==='daily'?data.day===previous.localDate:data.time===localInput(new Date(previous.occurredAt)));
-  const day = unchangedTime?previous.localDate:(type === 'daily' ? data.day : localDay(date));
-  const entryProvenance=data.entryProvenance??previous?.entryProvenance??{mode:day<localDay(new Date(previous?.createdAt??now))?'retrospective':'contemporaneous',timeMeaning:type==='daily'?'day-anchor':type==='screening'?'assessment':'event',source:type==='narrative'?'narrative-reviewed':type==='occurrence'?'quick-checkin':type==='screening'?'screening':'manual'};
-  return validateRecord({...data, type, schemaVersion:2, entryProvenance,id: previous?.id ?? uid(), occurredAt: unchangedTime?previous.occurredAt:date.toISOString(), localDate: day,
+  const unchangedTime=previous && (['daily','sleep'].includes(type)?data.day===previous.localDate:data.time===localInput(new Date(previous.occurredAt)));
+  const day = unchangedTime?previous.localDate:(['daily','sleep'].includes(type) ? data.day : localDay(date));
+  const previousProvenance=previous?.entryProvenance?(previous.localDate===day?previous.entryProvenance:{...previous.entryProvenance,mode:day<localDay(new Date(previous.createdAt))?'retrospective':'contemporaneous'}):null;
+  const entryProvenance=data.entryProvenance??previousProvenance??{mode:day<localDay(new Date(previous?.createdAt??now))?'retrospective':'contemporaneous',timeMeaning:['daily','sleep'].includes(type)?'day-anchor':type==='screening'?'assessment':'event',source:type==='narrative'?'narrative-reviewed':['occurrence','checkin'].includes(type)?'quick-checkin':type==='screening'?'screening':'manual'};
+  return validateRecord({...previous,...data,...(type==='sleep'?{wakeDate:data.wakeDate??day}:{}), type, schemaVersion:3, entryProvenance,id: previous?.id ?? uid(), occurredAt: unchangedTime?previous.occurredAt:date.toISOString(), localDate: day,
     timezoneOffsetMinutes: unchangedTime?previous.timezoneOffsetMinutes:date.getTimezoneOffset(), createdAt: previous?.createdAt ?? now, updatedAt: now});
 }
 export function backupEnvelope(records) {
   return {format:'fuguang-backup', version:VERSION, exportedAt:new Date().toISOString(),
-    semantics:{anxiety:'non-diagnostic 0–10 self-rating; see ratingProvenance for explicit / approximate / compared origin',lowMood:'non-diagnostic 0–10 low-mood self-rating, independent from formal scales',mood:'legacy daily mood 0–4 ordinal; never converted to lowMood',missing:'null or unknown; absent event does not mean zero',timezoneOffsetMinutes:'minutes UTC minus local (JavaScript getTimezoneOffset convention)',sleepHours:'night only, assigned by wake date; naps separately timestamped',caffeineEstimate:'sourced range or user product-label value; legacy estimatedCaffeineMg has unclassified provenance',screening:'independent item-level assessment over past two weeks; never replicated into daily outcomes'},
+    semantics:{anxiety:'non-diagnostic 0–10 self-rating; see ratingProvenance for explicit / approximate / compared origin',lowMood:'non-diagnostic 0–10 low-mood self-rating, independent from formal scales',mood:'legacy daily mood 0–4 ordinal; never converted to lowMood',missing:'null or unknown; absent event does not mean zero',timezoneOffsetMinutes:'minutes UTC minus local (JavaScript getTimezoneOffset convention)',sleepHours:'night only, assigned by wake date; naps separately timestamped; independent sleep record supersedes same-day legacy daily sleep fields for analysis',caffeineEstimate:'sourced range or user product-label value; legacy estimatedCaffeineMg has unclassified provenance',screening:'independent item-level assessment with instrument-specific recallDays/windowStart/windowEnd; never replicated into daily outcomes',stableCategories:'optional explicit groupId/categoryId; absence means legacy unclassified, never inferred from free text',dietQuantity:'quantity and quantityUnit are independent of preserved legacy amount/unit; units are not mixed',checkin:'section-specific explicit status; absent checkin means unknown, positive events override earlier none',narrativeChildren:'sourceNarrativeId + exact sourceFragmentKey link a separately confirmed structured record; no duplicate source tuple'},
     records: records.map(validateRecord)};
 }
 export function parseBackup(raw) {
   assert(typeof raw === 'string' && new TextEncoder().encode(raw).length <= MAX_FILE, '备份文件过大（上限 12 MB）');
   let data; try { data = JSON.parse(raw); } catch { throw new Error('无法读取这个 JSON 文件'); }
-  assert(data?.format === 'fuguang-backup' && [1,2].includes(data.version), '这不是支持的浮光备份（支持版本 1 / 2）');
+  assert(data?.format === 'fuguang-backup' && [1,2,3].includes(data.version), '这不是支持的浮光备份（支持版本 1 / 2 / 3）');
   assert(Array.isArray(data.records) && data.records.length <= MAX_RECORDS, '备份记录数量不正确');
-  const ids = new Set(), days = new Set();
+  const ids = new Set(), days = new Set(), fragments=new Set();
   const records = data.records.map(validateRecord);
   for (const r of records) {
     assert(!ids.has(r.id), '备份中存在重复记录标识'); ids.add(r.id);
-    if (r.type === 'daily') { assert(!days.has(r.localDate), '备份中同一天有多条每日记录'); days.add(r.localDate); }
+    if (['daily','sleep'].includes(r.type)) { const key=r.type+':'+r.localDate;assert(!days.has(key), '备份中同一天有多条同类每日 / 睡眠记录'); days.add(key); }
+    if(r.sourceNarrativeId){const key=JSON.stringify([r.sourceNarrativeId,r.sourceFragmentKey]);assert(!fragments.has(key),'备份中同一原话片段被重复整理');fragments.add(key);}
   }
   return records;
 }
 export function mergeRecords(existing, incoming) {
   const ids = new Set(existing.map(r => r.id));
-  const days = new Set(existing.filter(r => r.type === 'daily').map(r => r.localDate));
+  const days = new Set(existing.filter(r => ['daily','sleep'].includes(r.type)).map(r => r.type+':'+r.localDate));
+  const fragments=new Set(existing.filter(r=>r.sourceNarrativeId).map(r=>JSON.stringify([r.sourceNarrativeId,r.sourceFragmentKey])));
   let skipped = 0; const added = [];
   for (const r of incoming) {
-    if (ids.has(r.id) || (r.type === 'daily' && days.has(r.localDate))) { skipped++; continue; }
-    ids.add(r.id); if (r.type === 'daily') days.add(r.localDate); added.push(r);
+    const dayKey=r.type+':'+r.localDate,fragmentKey=r.sourceNarrativeId?JSON.stringify([r.sourceNarrativeId,r.sourceFragmentKey]):null;
+    if (ids.has(r.id) || (['daily','sleep'].includes(r.type) && days.has(dayKey)) ||fragmentKey&&fragments.has(fragmentKey)) { skipped++; continue; }
+    ids.add(r.id); if (['daily','sleep'].includes(r.type)) days.add(dayKey);if(fragmentKey)fragments.add(fragmentKey);added.push(r);
   }
   assert(existing.length + added.length <= MAX_RECORDS, '记录总数超出 20,000 条上限，请先保留备份');
   const records=[...existing,...added];
@@ -289,11 +338,11 @@ export function summarize(records,days=14,now=new Date(),metric='anxiety'){
  const keys=Array.from({length:days},(_,i)=>shiftDay(localDay(now),i-days+1));
  const scored=r=>['moment','narrative','daily'].includes(r.type)&&Number.isFinite(r[metric]);
  const rows=keys.map(day=>{
-  const all=records.filter(r=>r.localDate===day), ratings=all.filter(scored), daily=all.find(r=>r.type==='daily');
+  const all=records.filter(r=>r.localDate===day), ratings=all.filter(scored), daily=all.find(r=>r.type==='daily'),sleep=all.find(r=>r.type==='sleep')??daily;
   return {day,count:ratings.length,anxiety:ratings.length?ratings.reduce((sum,r)=>sum+r[metric],0)/ratings.length:null,
-   mood:daily?.mood??null,sleepHours:daily?.sleepHours??null,exerciseMinutes:daily?.exerciseMinutes??null,
-   medicationCount:all.filter(r=>r.type==='medication').length||(daily?.medicationStatus==='none'?0:null),
-   caffeineCount:all.filter(r=>r.type==='caffeine').length||(daily?.caffeineStatus==='none'?0:null),
+   mood:daily?.mood??null,sleepHours:sleep?.sleepHours??null,exerciseMinutes:daily?.exerciseMinutes??null,
+   medicationCount:all.filter(r=>r.type==='medication').length||(!all.some(r=>r.type==='checkin'&&r.domain==='medication'&&r.status==='some')&&(daily?.medicationStatus==='none'||all.some(r=>r.type==='checkin'&&r.domain==='medication'&&r.status==='none'))?0:null),
+   caffeineCount:all.filter(r=>r.type==='caffeine').length||(!all.some(r=>r.type==='checkin'&&r.domain==='caffeine'&&r.status==='some')&&(daily?.caffeineStatus==='none'||all.some(r=>r.type==='checkin'&&r.domain==='caffeine'&&r.status==='none'))?0:null),
    occurrence:dayOccurrence(all,metric),recorded:all.length>0};
  });
  const ratings=records.filter(r=>scored(r)&&keys.includes(r.localDate));
@@ -307,7 +356,7 @@ export function scoreScreener(id,answers){
  const spec=SCREENERS.find(s=>s.id===id);assert(spec,'量表未核实');
  assert(Array.isArray(answers)&&answers.length===spec.items.length,'答案数量不正确');
  for(const v of answers)numeric(v,'量表答案',0,3,true,true);
- const complete=answers.every(v=>v!==null),total=complete?answers.reduce((a,b)=>a+b,0):null;
+  const complete=answers.every(v=>v!==null),total=complete?answers.reduce((a,b)=>a+b,0):null;
  let band=null;if(total!==null)band=spec.cutpoints.filter(n=>total>=n).length;
- return {total,complete,band,needsFurtherAssessment:total!==null&&spec.items.length===2&&total>=3,item9Help:id==='phq9'&&answers[8]!==null&&answers[8]>0};
+  return {total,complete,band,needsFurtherAssessment:total!==null&&['phq2','gad2'].includes(id)&&total>=3,item9Help:id==='phq9'&&answers[8]!==null&&answers[8]>0};
 }

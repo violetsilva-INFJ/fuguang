@@ -1,9 +1,15 @@
 // Pure local statistics. No requests, storage, credentials or clinical inference.
-export const ENGINE_VERSION='fuguang-association-1.0.0';
+import {ACTIVITY_GROUPS,DIET_CATEGORIES,QUANTITY_UNITS} from './core.js';
+export const ENGINE_VERSION='fuguang-association-1.1.0';
 export const VARIABLES=[
  {id:'sleepHours',label:'夜间睡眠时长（按醒来日期）',kind:'continuous',role:'x',unit:'小时'},
- {id:'exerciseMinutes',label:'自行填写的当日运动分钟',kind:'continuous',role:'x',unit:'分钟'},
+ {id:'exerciseMinutes',label:'旧版未分类每日运动分钟',kind:'continuous',role:'x',unit:'分钟'},
  {id:'activityMinutes',label:'已记录活动分钟（每个事件只计一次）',kind:'continuous',role:'x',unit:'分钟'},
+ {id:'activityEventCount',label:'已记录活动事件数',kind:'continuous',role:'x',unit:'次'},
+ {id:'activityPresence',label:'当天明确记录活动情况',kind:'binary',role:'x',levels:[0,1],levelLabels:['明确记录未活动','明确记录有活动']},
+ {id:'legacyActivityMinutes',label:'旧版未分类活动分钟',kind:'continuous',role:'x',unit:'分钟'},
+ {id:'dietEventCount',label:'已记录饮食事件数（含咖啡与茶）',kind:'continuous',role:'x',unit:'次'},
+ {id:'legacyDietEventCount',label:'旧版未分类饮食事件数',kind:'continuous',role:'x',unit:'次'},
  {id:'gameMinutes',label:'已记录游戏分钟',kind:'continuous',role:'x',unit:'分钟'},
  {id:'caffeineCups',label:'已记录咖啡 / 茶杯数',kind:'continuous',role:'x',unit:'杯'},
  {id:'caffeineLabelMg',label:'标签注明的咖啡因量',kind:'continuous',role:'x',unit:'mg',note:'仅完整产品标签总量；参照范围和旧估计不混入。'},
@@ -18,8 +24,30 @@ export const VARIABLES=[
  {id:'lowMood',label:'低落 · 已记录时刻强度中位数',kind:'ordinal',role:'y',score:true,unit:'分'},
  {id:'anxietyOccurrence',label:'当天是否记录到焦虑',kind:'binary',role:'both',levels:[0,1],levelLabels:['明确记录未出现','有记录出现']},
  {id:'lowMoodOccurrence',label:'当天是否记录到低落',kind:'binary',role:'both',levels:[0,1],levelLabels:['明确记录未出现','有记录出现']},
+ ...ACTIVITY_GROUPS.flatMap(g=>[
+  ...['count','minutes'].map(measure=>activityDescriptor(g,null,measure)),
+  ...g.categories.flatMap(c=>['count','minutes'].map(measure=>activityDescriptor(g,c,measure))),
+ ]),
+ ...DIET_CATEGORIES.map(c=>dietDescriptor(c,'count')),
 ];
-const descriptor=id=>VARIABLES.find(v=>v.id===id);
+function activityDescriptor(group,category,measure){return {id:category?`activityCategory:${group.id}:${category.id}:${measure}`:`activityGroup:${group.id}:${measure}`,label:`${group.label}${category?' · '+category.label:''} · 已记录${measure==='count'?'事件数':'分钟'}`,kind:'continuous',role:'x',unit:measure==='count'?'次':'分钟',domain:'activity',groupId:group.id,categoryId:category?.id??null,measure,note:'按明确保存的稳定分类计数；同一事件多标签只计一次，未登记不算0。'};}
+function dietDescriptor(category,measure,unit=null,unitLabel=null){return {id:measure==='count'?`dietCategory:${category.id}:count`:`dietCategory:${category.id}:quantity:${unit}${unit==='other'?':'+encodeURIComponent(unitLabel):''}`,label:`${category.label} · ${measure==='count'?'已记录事件数':'已记录数量（'+(unitLabel??QUANTITY_UNITS.find(u=>u.id===unit)?.label??unit)+'）'}`,kind:'continuous',role:'x',unit:measure==='count'?'次':unitLabel??QUANTITY_UNITS.find(u=>u.id===unit)?.label??unit,domain:'diet',categoryId:category.id,measure,quantityUnit:unit,quantityUnitLabel:unitLabel,note:'只汇总同一稳定分类、同一明确数量单位；旧自由文本不自动分类，缺失不算0。'};}
+const customId=id=>typeof id==='string'&&/^custom-[A-Za-z0-9_-]{8,73}$/.test(id);
+function activityClassification(r){const group=ACTIVITY_GROUPS.find(g=>g.id===r.groupId);if(!group)return null;const category=group.categories.find(c=>c.id===r.categoryId);return category||customId(r.categoryId)&&r.categoryLabel?{group,category:category??{id:r.categoryId,label:r.categoryLabel}}:null;}
+function dietClassification(r){const category=DIET_CATEGORIES.find(c=>c.id===r.categoryId);return category??(customId(r.categoryId)&&r.categoryLabel?{id:r.categoryId,label:r.categoryLabel}:null);}
+function customCatalog(records){
+ const entries=new Map();
+ for(const r of records){if(r.entryProvenance?.source==='narrative-reviewed'||!customId(r.categoryId))continue;const a=r.type==='activity'?activityClassification(r):null,d=r.type==='diet'?dietClassification(r):null;if(!a&&!d)continue;const key=JSON.stringify([r.type,a?.group.id??'',r.categoryId]);const candidate={key,domain:r.type,group:a?.group??null,category:a?.category??d};const old=entries.get(key);if(!old||candidate.category.label<old.category.label)entries.set(key,candidate);}
+ return [...entries.values()].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
+}
+export function analysisCatalogInfo(records){const all=customCatalog(records);return {customCategories:all.length,customIncluded:Math.min(50,all.length),customOmitted:Math.max(0,all.length-50)};}
+export function analysisVariables(records=[]){
+ const catalog=[...VARIABLES],custom=customCatalog(records).slice(0,50),allowedCustom=new Set(custom.map(c=>c.key));
+ for(const c of custom)if(c.domain==='activity')catalog.push(...['count','minutes'].map(m=>activityDescriptor(c.group,c.category,m)));else catalog.push(dietDescriptor(c.category,'count'));
+ const quantities=new Map();for(const r of records){if(r.type!=='diet'||r.entryProvenance?.source==='narrative-reviewed'||!numeric(r.quantity)||!QUANTITY_UNITS.some(u=>u.id===r.quantityUnit)||r.quantityUnit==='other'&&!r.quantityUnitLabel)continue;const c=dietClassification(r);if(!c||customId(c.id)&&!allowedCustom.has(JSON.stringify(['diet','',c.id])))continue;const d=dietDescriptor(c,'quantity',r.quantityUnit,r.quantityUnit==='other'?r.quantityUnitLabel:null);if(!quantities.has(d.id)||d.label<quantities.get(d.id).label)quantities.set(d.id,d);}
+ catalog.push(...[...quantities.values()].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0));return catalog;
+}
+const descriptor=(id,records=[])=>analysisVariables(records).find(v=>v.id===id);
 const numeric=v=>typeof v==='number'&&Number.isFinite(v);
 const choose2=n=>n*(n-1)/2;
 const unique=a=>[...new Set(a)];
@@ -38,7 +66,7 @@ function occurrence(records,metric,view){
  const yes=explicit.some(r=>r[key]==='yes')||records.some(r=>ratingIncluded(r,metric,view)&&r[metric]>0);
  return yes?1:explicit.some(r=>r[key]==='no')?0:null;
 }
-function positiveOrExplicitNo(events,daily,key){return events.length||daily.some(r=>r[key]==='some')?1:daily.some(r=>r[key]==='none')?0:null;}
+function positiveOrExplicitNo(events,daily,key,checkins=[],domain=''){return events.length||daily.some(r=>r[key]==='some')||checkins.some(r=>r.domain===domain&&r.status==='some')?1:daily.some(r=>r[key]==='none')||checkins.some(r=>r.domain===domain&&r.status==='none')?0:null;}
 function sumKnown(events,fn){if(!events.length)return null;const vals=events.map(fn);return vals.every(numeric)?vals.reduce((a,b)=>a+b,0):null;}
 function defaultDates(records,config){
  const valid=records.map(r=>r.localDate).filter(d=>Number.isFinite(dateOrdinal(d))).sort();
@@ -50,6 +78,7 @@ export function buildDailyData(records,config={}){
  const dates=defaultDates(records,config),start=dateOrdinal(dates.startDate),end=dateOrdinal(dates.endDate);
  if(!Number.isFinite(start)||!Number.isFinite(end)||end<start||end-start>3660)throw new Error('分析日期范围无效或超过十年。');
  const byDay=new Map();
+ const catalog=analysisVariables(records);
  const excluded={estimatedRatings:0,legacyRatings:0,dailyRatings:0,screeningObservations:0,narrativeExposureTags:0,invalidDates:0};
  for(const r of records){
   if(!Number.isFinite(dateOrdinal(r.localDate))){excluded.invalidDates++;continue;}
@@ -71,17 +100,25 @@ export function buildDailyData(records,config={}){
   const activity=all.filter(r=>r.type==='activity'&&r.entryProvenance?.source!=='narrative-reviewed');
   const beverages=all.filter(r=>r.type==='caffeine'&&r.entryProvenance?.source!=='narrative-reviewed');
   const meds=all.filter(r=>r.type==='medication'&&r.entryProvenance?.source!=='narrative-reviewed');
-  const caffeinePresence=positiveOrExplicitNo(beverages,daily,'caffeineStatus');
-  const medPresence=positiveOrExplicitNo(meds,daily,'medicationStatus');
+  const checkins=all.filter(r=>r.type==='checkin'&&r.entryProvenance?.source!=='narrative-reviewed');
+  const caffeinePresence=positiveOrExplicitNo(beverages,daily,'caffeineStatus',checkins,'caffeine');
+  const medPresence=positiveOrExplicitNo(meds,daily,'medicationStatus',checkins,'medication');
+  const activityPresence=positiveOrExplicitNo(activity,[],'',checkins,'activity'),activityNone=activityPresence===0;
+  const food=all.filter(r=>r.type==='diet'&&r.entryProvenance?.source!=='narrative-reviewed');
+  const sleepRecords=all.filter(r=>r.type==='sleep'&&r.entryProvenance?.source!=='narrative-reviewed');
+  const sleep=sleepRecords.length?sleepRecords:daily;
   const categories=unique(beverages.map(r=>r.originalDrinkType?.trim()||r.drinkKind&&r.drinkKind!=='unknown'&&r.drinkKind||r.drink).filter(Boolean));
   const values={
    anxiety:median(all.filter(r=>ratingIncluded(r,'anxiety',view)).map(r=>r.anxiety)),
    lowMood:median(all.filter(r=>ratingIncluded(r,'lowMood',view)).map(r=>r.lowMood)),
    anxietyOccurrence:occurrence(all,'anxiety',view),lowMoodOccurrence:occurrence(all,'lowMood',view),
-   sleepHours:agreed(daily.map(r=>numeric(r.sleepHours)?r.sleepHours:null)),
+   sleepHours:agreed(sleep.map(r=>numeric(r.sleepHours)?r.sleepHours:null)),
    exerciseMinutes:agreed(daily.map(r=>numeric(r.exerciseMinutes)?r.exerciseMinutes:null)),
-   activityMinutes:sumKnown(activity,r=>r.durationMinutes),
-   gameMinutes:sumKnown(activity.filter(r=>r.tags?.includes('game')),r=>r.durationMinutes),
+   activityMinutes:activity.length?sumKnown(activity,r=>r.durationMinutes):activityNone?0:null,
+   activityEventCount:activity.length||activityNone?activity.length:null,activityPresence,
+   legacyActivityMinutes:activity.filter(r=>!activityClassification(r)).length?sumKnown(activity.filter(r=>!activityClassification(r)),r=>r.durationMinutes):activityNone?0:null,
+   dietEventCount:food.length+beverages.length||null,legacyDietEventCount:food.filter(r=>!dietClassification(r)).length||null,
+   gameMinutes:activity.some(r=>r.tags?.includes('game'))?sumKnown(activity.filter(r=>r.tags?.includes('game')),r=>r.durationMinutes):activityNone?0:null,
    dailyMood:agreed(daily.map(r=>numeric(r.mood)?r.mood:null)),
    symptomIntensity:median(all.filter(r=>r.type==='symptom'&&r.entryProvenance?.source!=='narrative-reviewed').map(r=>r.intensity)),
    medicationPresence:medPresence,
@@ -90,9 +127,19 @@ export function buildDailyData(records,config={}){
    caffeineCups:beverages.length?sumKnown(beverages,r=>numeric(r.cupCount)?r.cupCount:r.unit==='杯'&&numeric(r.amount)?r.amount:null):caffeinePresence===0?0:null,
    caffeineLabelMg:beverages.length?sumKnown(beverages,r=>r.caffeineEstimate?.method==='product-label'&&numeric(r.caffeineEstimate.lowMg)&&r.caffeineEstimate.lowMg===r.caffeineEstimate.highMg?r.caffeineEstimate.lowMg:null):caffeinePresence===0?0:null,
    drinkType:categories.length>1?'混合品类':categories[0]??(caffeinePresence===0?'明确未饮用':null),
-   sleepQuality:agreed(daily.map(r=>r.sleepDetails?.subjective&&r.sleepDetails.subjective!=='unknown'?r.sleepDetails.subjective:null)),
+   sleepQuality:agreed(sleep.map(r=>r.sleepDetails?.subjective&&r.sleepDetails.subjective!=='unknown'?r.sleepDetails.subjective:null)),
   };
-  rows.push({date,ordinal,values,provenance:{recordIds:all.map(r=>r.id),momentCounts:{anxiety:all.filter(r=>ratingIncluded(r,'anxiety',view)).length,lowMood:all.filter(r=>ratingIncluded(r,'lowMood',view)).length},retrospectiveRecords:all.filter(r=>r.entryProvenance?.mode==='retrospective').length,ambiguousDaily:daily.length>1&&['sleepHours','exerciseMinutes','mood'].some(k=>unique(daily.filter(r=>numeric(r[k])).map(r=>r[k])).length>1),sleepDeviceSources:unique(daily.map(r=>r.sleepDetails?.deviceSource).filter(Boolean))}});
+  for(const v of catalog){
+   if(v.domain==='activity'){
+    const events=activity.filter(r=>{const c=activityClassification(r);return c&&c.group.id===v.groupId&&(!v.categoryId||c.category.id===v.categoryId);});
+    values[v.id]=events.length?(v.measure==='count'?events.length:sumKnown(events,r=>r.durationMinutes)):activityNone?0:null;
+   }else if(v.domain==='diet'){
+    const events=food.filter(r=>dietClassification(r)?.id===v.categoryId);
+    if(v.measure==='count')values[v.id]=events.length||null;
+    else {const sameUnit=events.filter(r=>r.quantityUnit===v.quantityUnit&&(v.quantityUnit!=='other'||r.quantityUnitLabel===v.quantityUnitLabel));values[v.id]=sumKnown(sameUnit,r=>r.quantity);}
+   }
+  }
+  rows.push({date,ordinal,values,provenance:{recordIds:all.map(r=>r.id),momentCounts:{anxiety:all.filter(r=>ratingIncluded(r,'anxiety',view)).length,lowMood:all.filter(r=>ratingIncluded(r,'lowMood',view)).length},retrospectiveRecords:all.filter(r=>r.entryProvenance?.mode==='retrospective').length,ambiguousDaily:daily.length>1&&['sleepHours','exerciseMinutes','mood'].some(k=>unique(daily.filter(r=>numeric(r[k])).map(r=>r[k])).length>1),sleepSource:sleepRecords.length?'sleep':'legacy-daily',sleepDeviceSources:unique(sleep.map(r=>r.sleepDetails?.deviceSource).filter(Boolean))}});
  }
  return {rows,excluded,scoreView:view,...dates};
 }
@@ -160,8 +207,8 @@ export function cramerV(table){
  let chi=0;for(let i=0;i<table.length;i++)for(let j=0;j<table[0].length;j++){const e=rs[i]*cs[j]/n;chi+=(table[i][j]-e)**2/e;}return Math.sqrt(chi/(n*Math.min(table.length-1,table[0].length-1)));
 }
 function contingency(pairs,levelsX,levelsY){return levelsX.map(x=>levelsY.map(y=>pairs.filter(p=>p.x===x&&p.y===y).length));}
-export function methodFor(x,y){
- const a=descriptor(x),b=descriptor(y);if(!a||!b||x===y)return null;
+export function methodFor(x,y,records=[]){
+ const a=descriptor(x,records),b=descriptor(y,records);if(!a||!b||x===y)return null;
  if(b.score){if(a.kind==='binary')return 'cliffs_delta';if(a.kind==='nominal')return 'rank_eta_squared';if(['continuous','ordinal'].includes(a.kind))return 'kendall_tau_b';}
  if(a.kind==='binary'&&b.kind==='binary')return 'proportion_difference';
  if(['nominal','binary'].includes(a.kind)&&['nominal','binary'].includes(b.kind))return 'cramers_v';
@@ -194,7 +241,7 @@ function transitions(pairs,key){let n=0;for(let i=1;i<pairs.length;i++)if(pairs[
 export function createAnalysis(records,config={}){
  const dates=defaultDates(records,config),c={x:'sleepHours',y:'anxiety',lag:0,scoreView:'primary',blockLength:7,repetitions:2000,seed:20261028,segmentIndex:0,phaseBoundaries:[],...config,...dates};
  c.phaseBoundaries=(c.phaseBoundaries??[]).map(p=>({date:p.date,label:String(p.label??'已标记阶段').slice(0,120)}));
- const a=descriptor(c.x),b=descriptor(c.y),method=methodFor(c.x,c.y);
+ const a=descriptor(c.x,records),b=descriptor(c.y,records),method=methodFor(c.x,c.y,records);
  const daily=buildDailyData(records,c),calendarRows=pairCalendar(daily.rows,c),segments=splitSegments(calendarRows),selectedSegment=segments[c.segmentIndex]??null,rows=selectedSegment?.rows??[],validPairs=rows.filter(r=>r.valid);
  const rawPoint=effectStatistic(method,validPairs),states=[],intervalStates=[],warnings=[];
  const add=(s,summary=false)=>{if(!intervalStates.includes(s))intervalStates.push(s);if(summary&&!states.includes(s))states.push(s);};
@@ -217,6 +264,7 @@ export function createAnalysis(records,config={}){
  const acfX=a&&['continuous','ordinal','binary'].includes(a.kind)?acfOne(rows,'x'):null,acfY=b&&['continuous','ordinal','binary'].includes(b.kind)?acfOne(rows,'y'):null;
  if(Math.abs(acfX??0)>.8||Math.abs(acfY??0)>.8){add('outside_tested_support');warnings.push('相邻日期依赖较强，当前有限验证不足以支持区间。');}
  if(c.scoreView==='estimated')warnings.push('此视图仅使用叙述生成并经确认的数值建议；不是独立、直接自评，不能与主视图混合解释。');
+ const catalogInfo=analysisCatalogInfo(records);if(catalogInfo.customOmitted)warnings.push(`自定义分类超过50个，按稳定标识顺序仅纳入前50个；另有${catalogInfo.customOmitted}个未纳入当前分析目录，原始记录仍保留。`);
  if(a?.medication)warnings.push(a.prn?'按需用药常因先出现不适而发生；适应证混杂与反向因果会影响结果。不能据此调整药物。':'用药记录受适应证、剂量、时间与其他治疗影响；这里不能评价药物效果或指导调整。');
  if(segments.length>1)warnings.push('存在已标记阶段或至少14天的配对缺口；只分析所选的一段，不跨段汇总。');
  if(rows.length&&daily.rows.some(r=>r.provenance.ambiguousDaily))warnings.push('同日多份每日记录的数值不一致时该字段按未知处理，未静默挑选一份。');

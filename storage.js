@@ -16,7 +16,7 @@ export function openStorage() {
     req.onblocked = () => reject(new Error('请先关闭其他浮光标签页，再重新打开。'));
   });
 }
-const persisted = r => r.type === 'daily' ? {...r,dailyKey:r.localDate} : r;
+const persisted = r => r.type === 'daily' ? {...r,dailyKey:r.localDate} : r.type==='sleep'?{...r,dailyKey:'sleep:'+r.localDate}:r;
 export function allRecords() {
   return new Promise((resolve,reject)=> {
     const tx=db.transaction('records','readonly'), req=tx.objectStore('records').getAll();
@@ -35,7 +35,8 @@ export function saveRecord(record, previousUpdatedAt = null) {
         if (previousUpdatedAt && (!previous || previous.updatedAt !== previousUpdatedAt)) { failure='这条记录已在其他页面更新，请关闭编辑后重新打开。'; tx.abort(); return; }
         if (!previous && all.length >= MAX_RECORDS) { failure='本机记录已到上限，请先导出备份。'; tx.abort(); return; }
         const next=[...all.filter(x=>x.id!==r.id),r];assertBackupCapacity(next);
-        if(r.type==='daily'&&((r.medicationStatus==='none'&&all.some(x=>x.type==='medication'&&x.localDate===r.localDate))||(r.caffeineStatus==='none'&&all.some(x=>x.type==='caffeine'&&x.localDate===r.localDate))))throw new Error('这一天已有用药或咖啡因记录，请核对“确认没有”的选择。');
+        if(r.sourceNarrativeId&&all.some(x=>x.id!==r.id&&x.sourceNarrativeId===r.sourceNarrativeId&&x.sourceFragmentKey===r.sourceFragmentKey))throw new Error('这段叙述已经另存为生活事件，请查看已有记录，避免重复。');
+        if(r.type==='daily'&&((r.medicationStatus==='none'&&previous?.medicationStatus!=='none'&&all.some(x=>x.type==='medication'&&x.localDate===r.localDate))||(r.caffeineStatus==='none'&&previous?.caffeineStatus!=='none'&&all.some(x=>x.type==='caffeine'&&x.localDate===r.localDate))))throw new Error('这一天已有相关事件，请核对新的“确认没有”选择。');
         store.put(persisted(r));
       } catch(e) {failure=e.message||'保存未成功，当前内容仍保留。';tx.abort();}
     };
@@ -65,3 +66,4 @@ export function importRecords(incoming) {
     tx.oncomplete=()=>{notifyChange();resolve(result);}; tx.onabort=tx.onerror=()=>reject(new Error(failure || '导入未成功，本机记录没有改变。'));
   });
 }
+export function clearRecords(){return new Promise((resolve,reject)=>{const tx=db.transaction('records','readwrite');tx.objectStore('records').clear();tx.oncomplete=()=>{notifyChange();resolve();};tx.onabort=tx.onerror=()=>reject(new Error('删除没有完成，原记录仍保留。'));});}

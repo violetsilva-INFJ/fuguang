@@ -1,8 +1,10 @@
 import {ENGINE_VERSION} from './analysis.js';
+import {SCALE_ENGINE_VERSION} from './scale-analysis.js';
+export const ANALYSIS_RUNTIME_VERSION=ENGINE_VERSION+'|'+SCALE_ENGINE_VERSION;
 
 // Keys contain only in-memory snapshots; neither journal data nor results leave this origin.
 export function analysisSnapshot(records,config){
- return JSON.stringify([ENGINE_VERSION,config,[...records].sort((a,b)=>a.id.localeCompare(b.id))]);
+ return JSON.stringify([ANALYSIS_RUNTIME_VERSION,config,[...records].sort((a,b)=>a.id.localeCompare(b.id))]);
 }
 export class AnalysisClient {
  constructor(factory=()=>new Worker(new URL('./analysis-worker.js',import.meta.url),{type:'module'})){
@@ -22,7 +24,7 @@ export class AnalysisClient {
    if(m.type==='error')a.reject(new Error(m.message||'计算未完成'));
    else a.resolve({result:m.result,key:m.key,cached:m.cached??false,cancelled:m.type==='cancelled'});
   };this.worker.onerror=()=>{const a=this.active;this.active=null;this.worker?.terminate();this.worker=null;a?.reject(new Error('当前浏览器未能运行本地计算线程，记录仍安全保留。'));};}
-  return new Promise((resolve,reject)=>{this.active={id,key,onProgress,resolve,reject};this.worker.postMessage({type:'run',id,key,version:ENGINE_VERSION,records,config});});
+  return new Promise((resolve,reject)=>{this.active={id,key,onProgress,resolve,reject};this.worker.postMessage({type:'run',id,key,version:ANALYSIS_RUNTIME_VERSION,records,config});});
  }
  dispose(){this.cancel();this.worker?.terminate();this.worker=null;}
 }
