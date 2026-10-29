@@ -5,17 +5,18 @@ import {openStorage, allRecords, saveRecord, deleteRecord, importRecords, clearR
 import {createAssociationView} from './analysis-view.js';
 import {dailyFields,activityFields,foodFields,sleepFieldsHTML,structuredData,activityCategoryOptions,classificationLabel,quantityText,createRecordControls} from './structured-entry.js';
 import {shortcutGroups,draftFromShortcut,loadShortcutPrefs,saveShortcutPrefs,hideShortcut,clearShortcutHistory,restoreShortcutPrefs,forgetShortcutPrefs} from './recent-drafts.js';
-import {createModalController,installButtonFeedback} from './modal-controller.js';
+import {createModalController,installButtonFeedback,installViewportLayout} from './modal-controller.js';
 import {createWeatherController} from './weather-view.js';
 
 const $ = selector => document.querySelector(selector);
-const main=$('#main'), editor=$('#editor'), confirmDialog=$('#confirm');
+const main=$('#main'), pageScroll=$('#page-scroll'), editor=$('#editor'), confirmDialog=$('#confirm');
 let aiReturnToCapture=false,aiApprovalPending=false;
 let narrativeDraft=null, narrativeRaw='', aiRunning=false, narrativeDay=localDay(), ratingState={}, reviewMetric='anxiety';
 let records=[], tab='now', filter='all', search='', period=14, ready=false, editing=null, selectedAnxiety=null, selectedMood=null, dirty=false, busy=false, focusReturn=null, toastTimer;
 let shortcutPrefs=loadShortcutPrefs(),presetExpanded=false,draftLink=null,routeParent=null;
 const recordControls=createRecordControls(editor);
 installButtonFeedback();
+installViewportLayout();
 const modal=createModalController(editor),weather=createWeatherController({openPanel:showEditor,closePanel:closeEditor,ask,toast});
 const associationView=createAssociationView({readRecords:allRecords,onDataChanged:latest=>{records=latest;}});
 const titles={narrative:'随手说一句',moment:'此刻',daily:'每日小记',sleep:'睡眠',checkin:'当天确认',medication:'用药',caffeine:'饮食 · 饮品',diet:'饮食 · 食物',activity:'活动',symptom:'身体感受',occurrence:'当天情况',screening:'筛查与评估'};
@@ -154,7 +155,7 @@ function render({focus=false}={}){
  main.innerHTML=({now:home,history,review,settings,analysis:()=>associationView.html(records)}[tab])();
  document.querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab===(tab==='analysis'?'review':tab))b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
  weather.apply();
- if(focus){main.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});}
+ if(focus){main.focus({preventScroll:true});pageScroll.scrollTo({top:0,behavior:'instant'});}
 }
 function go(next){tab=next;render({focus:true});}
 function showEditor(content){recordControls.clear();dirty=false;modal.show(content);recordControls.refresh();}
