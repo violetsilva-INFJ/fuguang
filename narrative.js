@@ -78,13 +78,13 @@ export function parseNarrative(raw){
  return {originalText:text,anxiety:suggestions.anxiety.value,lowMood:suggestions.lowMood.value,ratingProvenance:{anxiety:suggestions.anxiety.provenance,lowMood:suggestions.lowMood.provenance},comparisonRequests:[suggestions.anxiety.comparison,suggestions.lowMood.comparison].filter(Boolean),topics:[...new Set(fragments.map(f=>f.topic))],fragments:fragments.slice(0,12),timeNote:[...new Set(timeMatches)].join('、'),method:'local'};
 }
 export function validateAISuggestions(data,originalText){
- if(!data||typeof data!=='object'||!Array.isArray(data.fragments)||data.fragments.length>12)throw new Error('AI 返回格式不符合约定；可以继续使用本地整理。');
+ if(!data||typeof data!=='object'||!Array.isArray(data.fragments)||data.fragments.length>12)throw new Error('AI 返回格式不符合约定，原文仍保留。');
  const fragments=data.fragments.map(f=>{
   if(!f||!TOPICS.includes(f.topic)||typeof f.quote!=='string'||!f.quote.trim()||!originalText.includes(f.quote))throw new Error('AI 包含不在原话中的内容，已拒绝采用。');
   const containing=contextualClauses(originalText).filter(s=>s.quote.includes(f.quote));
   if(!containing.length||containing.some(s=>s.temporal!=='present'||!isAffirmative(s.quote)))throw new Error('AI 把否定、历史或不确定叙述当作事实，已拒绝采用。');
   return {topic:f.topic,quote:f.quote};
  });
- const local=parseNarrative(originalText);
- return {...local,fragments,topics:[...new Set(fragments.map(f=>f.topic))],method:'ai'};
+ const suggestions=emotionSuggestions(fragments.filter(f=>f.topic==='感受').map(f=>f.quote).join('\n'));
+ return {originalText,anxiety:suggestions.anxiety.value,lowMood:suggestions.lowMood.value,ratingProvenance:{anxiety:suggestions.anxiety.provenance,lowMood:suggestions.lowMood.provenance},comparisonRequests:[suggestions.anxiety.comparison,suggestions.lowMood.comparison].filter(Boolean),timeNote:'',fragments,topics:[...new Set(fragments.map(f=>f.topic))],method:'ai'};
 }

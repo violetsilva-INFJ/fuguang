@@ -31,9 +31,9 @@ export async function structureWithAI(text,approval,{fetchImpl=globalThis.fetch,
   if(response.redirected)throw new Error('接口发生重定向，已拒绝采用。');
   if(!response.ok)throw new Error(`接口返回 HTTP ${response.status}，没有采用任何建议。`);
   const raw=await response.text();if(raw.length>100000)throw new Error('接口响应过大，已拒绝采用。');
-  let body,parsed;try{body=JSON.parse(raw);const content=body?.choices?.[0]?.message?.content;if(typeof content!=='string'||content.length>20000)throw new Error();parsed=JSON.parse(content);}catch{throw new Error('接口未返回约定的 JSON 内容，可改用本地整理。');}
+  let body,parsed;try{body=JSON.parse(raw);const content=body?.choices?.[0]?.message?.content;if(typeof content!=='string'||content.length>20000)throw new Error();parsed=JSON.parse(content);}catch{throw new Error('接口未返回约定的 JSON 内容，原文仍保留。');}
   if(version!==revision||controller.signal.aborted)throw new Error('本次请求已取消。');
   return validateAISuggestions(parsed,text);
- }catch(err){if(controller.signal.aborted)throw new Error('请求已取消或超时。原文仍保留，可使用本地整理。');if(err instanceof TypeError)throw new Error('连接失败。服务可能不允许浏览器跨域（CORS），或发生重定向。可继续使用本地整理。');throw err;}
+ }catch(err){if(controller.signal.aborted)throw new Error('请求已取消或超时。原文仍保留，可以重试。');if(err instanceof TypeError)throw new Error('连接失败，请检查接口或浏览器跨域（CORS）支持。原文仍保留。');throw err;}
  finally{clearTimeout(timer);if(active===controller)active=null;}
 }

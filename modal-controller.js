@@ -8,3 +8,14 @@ export function createModalController(dialog,{fallback=()=>document.querySelecto
  const motion=matchMedia('(prefers-reduced-motion: reduce)'),onMotion=()=>{if(reduced()){if(closing)close({immediate:true});else stop();}};motion.addEventListener?.('change',onMotion);
  return {show,close,cancelMotion:onMotion,dispose(){sequence++;stop();motion.removeEventListener?.('change',onMotion);if(dialog.open)dialog.close();dialog.inert=false;document.body.classList.remove('modal-open');}};
 }
+
+// Feedback never gates actions. Repeated clicks replace their own short animation.
+export function installButtonFeedback(doc=document){
+ const active=new Set(),byButton=new WeakMap(),motion=matchMedia('(prefers-reduced-motion: reduce)');
+ const reduced=()=>motion.matches||doc.body.classList.contains('reduce-motion');
+ function cancel(){for(const animation of active)animation.cancel();active.clear();}
+ function click(event){const b=event.target.closest?.('button');if(!b||b.disabled||b.closest('.tabbar')||reduced())return;byButton.get(b)?.cancel();if(!b.animate)return;const animation=b.animate([{transform:'translateY(1px) scale(.98)'},{transform:'translateY(0) scale(1)'}],{duration:170,easing:'cubic-bezier(.2,.7,.2,1)'});byButton.set(b,animation);active.add(animation);animation.finished.catch(()=>{}).finally(()=>active.delete(animation));}
+ const observer=new MutationObserver(()=>{if(reduced())cancel();});observer.observe(doc.body,{attributes:true,attributeFilter:['class']});
+ doc.addEventListener('click',click,true);motion.addEventListener('change',cancel);doc.addEventListener('visibilitychange',()=>{if(doc.hidden)cancel();});
+ return {cancel,dispose(){cancel();observer.disconnect();doc.removeEventListener('click',click,true);motion.removeEventListener('change',cancel);}};
+}
