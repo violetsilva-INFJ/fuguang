@@ -53,6 +53,8 @@ export function scopeForDate(input){
 export function createPickers({doc=document,readRecords=async()=>[]}={}){
  const dialog=doc.createElement('dialog');dialog.id='app-picker';dialog.className='picker-dialog';dialog.setAttribute('aria-labelledby','picker-title');doc.body.append(dialog);
  const dates=new WeakMap(),choices=new WeakMap();let serial=0,active=null,scheduled=false,disposed=false;
+ const pointerMode=()=>dialog.classList.remove('keyboard-focus'),keyboardMode=()=>dialog.classList.add('keyboard-focus');
+ doc.addEventListener('pointerdown',pointerMode,true);doc.addEventListener('keydown',keyboardMode,true);
  const make=(tag,cls,text)=>{const el=doc.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el;};
  const emit=input=>{input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));};
  const label=input=>input.closest('.field')?.querySelector('.field-label')?.textContent.trim()||input.getAttribute('aria-label')||'选择日期';
@@ -172,5 +174,5 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
  doc.addEventListener('input',event=>{if(dates.has(event.target))syncDate(dates.get(event.target));});
  doc.addEventListener('change',event=>{if(dates.has(event.target)){syncDate(dates.get(event.target));orderDates();}});
  const observer=new MutationObserver(()=>{if(!scheduled&&!disposed){scheduled=true;queueMicrotask(refresh);}});observer.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['disabled','list']});refresh();
- return {refresh,close,dispose(){disposed=true;observer.disconnect();close();dialog.remove();}};
+ return {refresh,close,dispose(){disposed=true;observer.disconnect();doc.removeEventListener('pointerdown',pointerMode,true);doc.removeEventListener('keydown',keyboardMode,true);close();dialog.remove();}};
 }
