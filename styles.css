@@ -36,3 +36,5 @@ body.modal-open .page-scroll{overflow:hidden}dialog.is-closing{pointer-events:no
 @media(max-width:350px){.chart-panel{padding:21px 13px}.trend-day-open{font-size:11px;gap:5px;padding:10px}.trend-day-open [data-trend-count]{font-size:10px}.day-records{padding-left:17px;padding-right:17px}.day-record{padding:15px 13px}}
 
 .history-pagination{display:flex;gap:12px;margin:20px 0 12px}.history-pagination button{flex:1;min-height:48px}.capacity-note{padding:12px 14px;border-radius:14px;background:#e9e6d9a6;color:#566452;font-size:12px;line-height:1.8;margin:14px 0}.trend-explorer [data-trend-cursor]{pointer-events:none}.trend-explorer .trend-reading strong{font-variant-numeric:tabular-nums}.trend-step{transition:background-color .14s,border-color .14s,opacity .14s}.history-pagination button:disabled{opacity:.35;cursor:default}
+
+.sheet-back-icon{display:grid;place-items:center;transform:rotate(180deg)}

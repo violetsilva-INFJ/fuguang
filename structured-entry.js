@@ -22,7 +22,7 @@ export function structuredData(type,form,previous,records,numberValue){const dat
 
 // Visible choices enhance the original fields; saved names, IDs and values stay unchanged.
 export function createRecordControls(root){
- const observers=[],cleanups=[];let serial=0;
+ const observers=[],cleanups=[];let serial=0,active=true;
  const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
  const change=input=>{input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));};
  function choice(select){
@@ -63,8 +63,8 @@ export function createRecordControls(root){
   const choose=()=>{input.value=range.value;sync();change(input);};range.addEventListener('input',choose);range.addEventListener('pointerup',choose);range.addEventListener('keydown',event=>{if(['Enter',' ','Home','End'].includes(event.key)){event.preventDefault();if(event.key==='Home')range.value=c.min;if(event.key==='End')range.value=c.max;choose();}});input.addEventListener('input',sync);input.addEventListener('change',sync);clear.addEventListener('click',()=>{input.value='';sync();change(input);});cleanups.push(()=>{input.removeEventListener('input',sync);input.removeEventListener('change',sync);});sync();
  }
  function sleepSources(){const form=root.querySelector('#record-form');if(!form)return;for(const key of ['nightmares','grinding','snoring']){const status=form.elements['sleep-'+key],source=form.elements['sleep-'+key+'Source'];if(status&&source)source.closest('.choice-field').hidden=status.value==='unknown'&&source.value==='unknown';}}
- root.addEventListener('change',event=>{if(event.target.name?.startsWith('sleep-'))sleepSources();});
+ const onSleepChange=event=>{if(active&&event.target.name?.startsWith('sleep-'))sleepSources();};root.addEventListener('change',onSleepChange);
  function refresh(){const form=root.querySelector('#record-form');if(!form)return;form.querySelectorAll('select:not([data-entry-choice])').forEach(choice);for(const input of form.querySelectorAll('input[type=number]:not([data-precision-control])')){const n=input.name,type=form.dataset.type,c=n==='sleepHours'?{min:0,max:24,step:.1,unit:'小时'}:type==='symptom'&&n==='intensity'?{min:0,max:10,step:1,unit:'分'}:type==='activity'&&n==='durationMinutes'?{min:0,max:240,step:1,unit:'分钟'}:n==='napMinutes'?{min:1,max:180,step:1,unit:'分钟'}:null;if(c)numeric(input,c);}sleepSources();}
  function clear(){observers.splice(0).forEach(o=>o.disconnect());cleanups.splice(0).forEach(fn=>fn());}
- return {refresh,clear};
+ return {refresh,clear,suspend(){active=false;},resume(){active=true;sleepSources();},dispose(){clear();root.removeEventListener('change',onSleepChange);}};
 }
