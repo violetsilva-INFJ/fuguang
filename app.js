@@ -5,7 +5,7 @@ import {openStorage, allRecords, recordsOnDay, saveRecord, deleteRecord, importR
 import {createAssociationView} from './analysis-view.js';
 import {dailyFields,activityFields,foodFields,sleepFieldsHTML,structuredData,activityCategoryOptions,classificationLabel,quantityText,createRecordControls} from './structured-entry.js';
 import {shortcutGroups,draftFromShortcut,loadShortcutPrefs,saveShortcutPrefs,hideShortcut,clearShortcutHistory,restoreShortcutPrefs,forgetShortcutPrefs} from './recent-drafts.js';
-import {createModalController,createViewMotion,installButtonFeedback,installViewportLayout} from './modal-controller.js';
+import {createModalController,createViewMotion,createPageTransition,installButtonFeedback,installViewportLayout} from './modal-controller.js';
 import {createPickers} from './pickers.js';
 import {createTrendExplorer,recordsForDay,wholeDayRecord} from './trend-view.js';
 import {createWeatherController} from './weather-view.js';
@@ -17,7 +17,8 @@ let narrativeDraft=null, narrativeRaw='', aiRunning=false, narrativeDay=localDay
 let records=[], tab='now', filter='all', search='', period=14, ready=false, editing=null, selectedAnxiety=null, selectedMood=null, dirty=false, busy=false, focusReturn=null, toastTimer;
 let shortcutPrefs=loadShortcutPrefs(),presetExpanded=false,draftLink=null,routeParent=null;
 let recordControls=createRecordControls(editor);
-const pageMotion=createViewMotion(main),confirmMotion=createViewMotion(confirmDialog);
+const pageMotion=createViewMotion(main),pageTransition=createPageTransition({fallback:pageMotion});
+let pendingTrigger=null;
 let historyPage=0,historyTimer=null,historyCache=null,capacityRecords=null,capacityValue=null;
 const HISTORY_PAGE_SIZE=80;
 let editorParents=[],sheetEpoch=0,sheetOpening=false,closePending=false;
@@ -170,19 +171,20 @@ function render({focus=false,motion=false}={}){
  pickers.refresh();if(tab==='review')trendExplorer.mount();if(motion)pageMotion.play();
  if(focus){main.focus({preventScroll:true});pageScroll.scrollTo({top:0,behavior:'instant'});}
 }
-function go(next){const changed=tab!==next;tab=next;render({focus:true,motion:changed});}
-function showEditor(content){pickers.close();recordControls.dispose();recordControls=createRecordControls(editor);dirty=false;modal.show(content);recordControls.refresh();pickers.refresh();syncEditorBack();}
+function go(next){if(sheetOpening&&!editor.open){sheetEpoch++;sheetOpening=false;clearSheetPending();}const old=['now','history','review','analysis','settings'].indexOf(tab),changed=tab!==next;tab=next;if(!changed){pageTransition.flush();render({focus:true});return;}pageTransition.run(()=>render({focus:true}),{scope:'page',direction:['now','history','review','analysis','settings'].indexOf(next)<old?-1:1}).catch(error=>toast(error.message||'页面没有完成切换，请再试一次。'));}
+function clearSheetPending(){pendingTrigger?.removeAttribute('aria-busy');pendingTrigger=null;delete editor.dataset.pending;editor.removeAttribute('aria-busy');const body=editor.querySelector(':scope>.sheet-body');if(body)body.inert=false;}
+function showEditor(content){pageTransition.flush();clearSheetPending();pickers.close();recordControls.dispose();recordControls=createRecordControls(editor);dirty=false;modal.show(content);recordControls.refresh();pickers.refresh();syncEditorBack();}
 function sheetTop(title){return `<header class="sheet-top"><h2 id="editor-title">${title}</h2><button class="close" data-action="close-editor" aria-label="关闭">${icon('close')}</button></header>`;}
 function syncEditorBack(){const button=editor.querySelector('.sheet-top [data-action="close-editor"]'),parent=editorParents.at(-1);if(!button)return;button.setAttribute('aria-label',parent?'返回'+parent.title:'关闭');button.title=parent?'返回'+parent.title:'关闭';button.innerHTML=parent?`<span class="sheet-back-icon">${icon('arrow')}</span>`:icon('close');editor.dataset.depth=String(editorParents.length);}
 function editorState(){return {editing,selectedMood,selectedAnxiety,ratingState,narrativeDraft,narrativeRaw,narrativeDay,draftLink,routeParent,presetExpanded,aiReturnToCapture,dirty};}
 function restoreEditorState(s){({editing,selectedMood,selectedAnxiety,ratingState,narrativeDraft,narrativeRaw,narrativeDay,draftLink,routeParent,presetExpanded,aiReturnToCapture,dirty}=s);}
-function closeEditor(){sheetEpoch++;sheetOpening=false;pickers.close();recordControls.dispose();for(const frame of editorParents)frame.controls.dispose();editorParents=[];recordControls=createRecordControls(editor);editing=null;dirty=false;draftLink=null;editor.dataset.depth='0';modal.close();}
-function returnEditor(){sheetEpoch++;sheetOpening=false;pickers.close();const frame=editorParents.pop();if(!frame){closeEditor();return;}recordControls.dispose();recordControls=frame.controls;restoreEditorState(frame.state);modal.show(frame.nodes,{scrollTop:frame.scroll,focus:frame.focus});recordControls.resume();pickers.refresh();syncEditorBack();}
+function closeEditor(){sheetEpoch++;sheetOpening=false;clearSheetPending();pickers.close();recordControls.dispose();for(const frame of editorParents)frame.controls.dispose();editorParents=[];recordControls=createRecordControls(editor);editing=null;dirty=false;draftLink=null;editor.dataset.depth='0';modal.close();}
+function returnEditor(){const pending=editor.dataset.pending==='true';sheetEpoch++;sheetOpening=false;clearSheetPending();pickers.close();const frame=editorParents.pop();if(!frame){closeEditor();return;}recordControls.dispose();recordControls=frame.controls;restoreEditorState(frame.state);if(pending&&frame.nodes.every(node=>node.parentNode===editor)){editor.scrollTop=frame.scroll;frame.focus?.focus?.({preventScroll:true});}else modal.show(frame.nodes,{scrollTop:frame.scroll,focus:frame.focus,direction:'back'});recordControls.resume();pickers.refresh();syncEditorBack();}
 async function openChild(action,trigger=document.activeElement){
- if(sheetOpening||busy||closePending)return;const ticket=++sheetEpoch;
+ if(sheetOpening||busy||closePending)return;const ticket=++sheetEpoch,hasParent=editor.open&&!editor.inert;
  if(editor.open&&!editor.inert){const frame={title:editor.querySelector('#editor-title')?.textContent??'上一页',nodes:[...editor.childNodes],scroll:editor.scrollTop,focus:editor.contains(trigger)?trigger:editor.querySelector('button'),state:editorState(),controls:recordControls};editorParents.push(frame);recordControls.suspend();recordControls=createRecordControls(editor);}
- sheetOpening=true;showEditor(`${sheetTop('正在打开…')}<div class="sheet-body"><p class="field-help" role="status">正在打开这一步。</p></div>`);
- try{await action(()=>ticket===sheetEpoch&&editor.open);}catch(error){if(ticket===sheetEpoch)returnEditor();throw error;}finally{if(ticket===sheetEpoch)sheetOpening=false;}
+ sheetOpening=true;pendingTrigger=trigger;pendingTrigger?.setAttribute('aria-busy','true');if(editor.open){editor.dataset.pending='true';editor.setAttribute('aria-busy','true');const body=editor.querySelector(':scope>.sheet-body');if(body)body.inert=true;syncEditorBack();}
+ try{await action(()=>ticket===sheetEpoch&&(!hasParent||editor.open));}catch(error){if(ticket===sheetEpoch)returnEditor();throw error;}finally{if(ticket===sheetEpoch){sheetOpening=false;clearSheetPending();}}
 }
 async function requestClose(){if(busy||closePending)return;closePending=true;const ticket=sheetEpoch;try{if(aiRunning){cancelAI();aiRunning=false;}if(!dirty||await ask(editorParents.length?'返回上一级？':'暂时离开？','这一步尚未保存。可以丢弃草稿返回，或继续填写。','丢弃草稿','继续填写')){if(ticket===sheetEpoch)returnEditor();}}finally{closePending=false;}}
 
@@ -190,9 +192,9 @@ function ask(title,message,yes='确认',no='取消'){
  return new Promise(resolve=>{
   const previous=document.activeElement;
   confirmDialog.innerHTML=`<h2 id="confirm-title">${e(title)}</h2><p>${e(message)}</p><div class="confirm-actions"><button class="secondary" data-confirm="no" autofocus>${e(no)}</button><button class="primary" data-confirm="yes">${e(yes)}</button></div>`;
-  const done=value=>{confirmMotion.cancel();confirmDialog.close();confirmDialog.removeEventListener('click',click);confirmDialog.removeEventListener('cancel',cancel);previous?.focus?.({preventScroll:true});resolve(value);};
+  const done=value=>{confirmDialog.inert=true;confirmDialog.setAttribute('aria-hidden','true');confirmDialog.close();confirmDialog.removeEventListener('click',click);confirmDialog.removeEventListener('cancel',cancel);previous?.focus?.({preventScroll:true});resolve(value);};
   const click=ev=>{const b=ev.target.closest('[data-confirm]');if(b)done(b.dataset.confirm==='yes');};const cancel=ev=>{ev.preventDefault();done(false);};
-  confirmDialog.addEventListener('click',click);confirmDialog.addEventListener('cancel',cancel);confirmDialog.showModal();confirmMotion.play(confirmDialog,{offset:4,duration:110});
+  confirmDialog.addEventListener('click',click);confirmDialog.addEventListener('cancel',cancel);confirmDialog.inert=false;confirmDialog.removeAttribute('aria-hidden');confirmDialog.showModal();
  });
 }
 function formFor(type,previous=null,day=localDay(),draft=null){
@@ -410,12 +412,15 @@ async function routeNarrativeFragment(index,canShow=()=>true){const parent=route
 
 document.querySelectorAll('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon));
 document.addEventListener('click',async ev=>{
- const b=ev.target.closest('button');if(!b)return;
+ let b=ev.target.closest('button');if(!b)return;
  try {
+
+ if(sheetOpening&&!editor.open){if(b===pendingTrigger)return;sheetEpoch++;sheetOpening=false;clearSheetPending();}
+ if(sheetOpening&&editor.open&&editor.contains(b)&&b.dataset.action!=='close-editor')return;
  if(b.dataset.clearRating){updateRating(b.dataset.clearRating,null);return;}
  if(b.dataset.useBaseline){useBaseline(b.dataset.useBaseline);return;}
  if(b.dataset.scale){await openChild(()=>screeningForm(b.dataset.scale),b);return;}
- if(b.dataset.reviewMetric){reviewMetric=b.dataset.reviewMetric;render();pageMotion.play(main.querySelector('.chart-panel'));return;}
+ if(b.dataset.reviewMetric){reviewMetric=b.dataset.reviewMetric;pageTransition.run(()=>{render();main.querySelector('[data-review-metric="'+reviewMetric+'"]')?.focus({preventScroll:true});},{scope:'chart'}).catch(error=>toast(error.message));return;}
  if(b.dataset.removeNap!==undefined){b.closest('[data-nap]').remove();dirty=true;return;}
  if(b.dataset.backfillType){const day=$('#backfill-day').value;if(!day||day>localDay()){toast('请选择今天或以前的日期');return;}await openChild(canShow=>add(b.dataset.backfillType,day,canShow),b);return;}
  if(b.dataset.backfillDiet!==undefined){const day=$('#backfill-day').value;if(!day||day>localDay()){toast('请选择今天或以前的日期');return;}await openChild(()=>dietSection(day),b);return;}
@@ -433,7 +438,7 @@ document.addEventListener('click',async ev=>{
  if(b.dataset.delete){await remove(b.dataset.delete);return;}
  if(b.dataset.filter){historyPage=0;filter=b.dataset.filter;render();return;}
  if(b.dataset.historyPage!==undefined){historyPage=Math.max(0,Number(b.dataset.historyPage));const results=$('#history-results');results.innerHTML=historyResults();results.focus({preventScroll:true});results.scrollIntoView({block:'start',behavior:'instant'});pageMotion.play(results);return;}
- if(b.dataset.period){period=Number(b.dataset.period);render();pageMotion.play(main.querySelector('.chart-panel'));return;}
+ if(b.dataset.period){period=Number(b.dataset.period);pageTransition.run(()=>{render();main.querySelector('[data-period="'+period+'"]')?.focus({preventScroll:true});},{scope:'chart'}).catch(error=>toast(error.message));return;}
  if(b.dataset.rating!==undefined){selectedAnxiety=Number(b.dataset.rating);dirty=true;$('#anxiety-value').textContent=selectedAnxiety;editor.querySelectorAll('[data-rating]').forEach(x=>x.setAttribute('aria-pressed',String(Number(x.dataset.rating)===selectedAnxiety)));return;}
  if(b.dataset.mood!==undefined){const v=Number(b.dataset.mood);selectedMood=selectedMood===v?null:v;dirty=true;editor.querySelectorAll('[data-mood]').forEach(x=>x.setAttribute('aria-pressed',String(Number(x.dataset.mood)===selectedMood)));return;}
  switch(b.dataset.action){case'diet-section':if(editor.open)await openChild(()=>dietSection(b.dataset.entryDay??localDay()),b);else dietSection(b.dataset.entryDay??localDay());break;case'clear-shortcuts':await clearPresetHistory();break;case'restore-shortcuts':shortcutPrefs=restoreShortcutPrefs();saveShortcutPrefs(shortcutPrefs);render();toast('已从现有记录重新生成草稿');break;case'delete-all':deleteAllPanel();break;case'confirm-delete-all':await deleteAllData();break;case'screeners':if(editor.open)await openChild(()=>screenerPicker(),b);else screenerPicker();break;case'help':await showHelp();break;case'no-anxiety':await noAnxiety();break;case'backfill':backfillPicker();break;case'add-nap':if(editor.querySelectorAll('[data-nap]').length<10){$('#nap-rows').insertAdjacentHTML('beforeend',napRow());recordControls.refresh();dirty=true;}break;case'close-editor':await requestClose();break;case'ai-entry':narrativeRaw='';narrativeDay=localDay();aiReturnToCapture=!aiStatus().enabled;if(aiReturnToCapture)showAIConfig();else captureNarrative(true);break;case'configure-from-narrative':narrativeRaw=$('#narrative-text').value;await openChild(()=>{aiReturnToCapture=true;showAIConfig();},b);break;case'ai-organize':await organizeAI();break;case'cancel-ai':cancelAI();break;case'back-narrative':captureNarrative(false,true);break;case'ai-config':aiReturnToCapture=false;showAIConfig();break;case'save-ai':saveAIConfig();break;case'disable-ai':configureAI({enabled:false});showAIConfig();toast('AI 已关闭，密钥已从本次会话清除');break;case'choose':choose();break;case'privacy':privacy();break;case'export':await exportBackup();break;case'import':$('#import-file').click();break;case'install':install();break;}

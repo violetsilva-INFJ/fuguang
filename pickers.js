@@ -99,12 +99,12 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
   doc.querySelectorAll('input[data-picker-mode]').forEach(input=>{const item=dates.get(input);if(item)syncDate(item);});
   doc.querySelectorAll('select[hidden]').forEach(select=>choices.get(select)?.sync());
  }
- const pickerMotion=createViewMotion(dialog);
+ const pickerMotion=createViewMotion(dialog);let closeTimer=null,layerEpoch=0;
  function show(state){
-  if(active)close();active=state;state.host=state.source.closest('dialog')??doc.querySelector('#page-scroll');state.scroll=state.host?.scrollTop??0;state.button.setAttribute('aria-expanded','true');dialog.showModal();pickerMotion.play(dialog,{offset:6,duration:120});
+  if(active)close();layerEpoch++;clearTimeout(closeTimer);dialog.inert=false;dialog.removeAttribute('aria-hidden');dialog.dataset.kind=state.kind;active=state;state.host=state.source.closest('dialog')??doc.querySelector('#page-scroll');state.scroll=state.host?.scrollTop??0;state.button.setAttribute('aria-expanded','true');dialog.showModal();
  }
  function close(){
-  if(!active)return;const s=active;active=null;pickerMotion.cancel();dialog.close();dialog.replaceChildren();s.button.setAttribute('aria-expanded','false');if(s.button.isConnected)s.button.focus({preventScroll:true});if(s.host?.isConnected)s.host.scrollTop=s.scroll;
+  if(!active)return;const s=active;active=null;pickerMotion.cancel();const token=++layerEpoch;dialog.inert=true;dialog.setAttribute('aria-hidden','true');dialog.close();clearTimeout(closeTimer);const clear=()=>{if(token===layerEpoch&&!dialog.open){dialog.replaceChildren();dialog.inert=false;}};if(doc.body.classList.contains('reduce-motion')||matchMedia('(prefers-reduced-motion: reduce)').matches)clear();else closeTimer=setTimeout(clear,240);s.button.setAttribute('aria-expanded','false');if(s.button.isConnected)s.button.focus({preventScroll:true});if(s.host?.isConnected)s.host.scrollTop=s.scroll;
  }
  function heading(title){return `<header class="picker-header"><h2 id="picker-title">${e(title)}</h2><button type="button" class="picker-close" data-picker="cancel" aria-label="关闭选择">×</button></header>`;}
  function bounds(state,day){return validDay(day)&&(!state.minDay||day>=state.minDay)&&(!state.maxDay||day<=state.maxDay);}
@@ -114,10 +114,10 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
   const raw=item.input.value,defaultDay=item.input.closest('form')?.dataset.targetDay||localDay(),minDay=item.min?.slice(0,10),maxDay=item.max?.slice(0,10)||(item.input.closest('#record-form')&&['time','day','assessmentDay'].includes(item.input.name)?localDay():'');
   const state={kind:'date',...item,source:item.input,selected:validDay(raw.slice(0,10))?raw.slice(0,10):'',focusDate:validDay(raw.slice(0,10))?raw.slice(0,10):defaultDay,hour:raw.slice(11,13),minute:raw.slice(14,16),minDay:validDay(minDay)?minDay:'',maxDay:validDay(maxDay)?maxDay:'',marks:new Set(),scope:scopeForDate(item.input),panel:'days'};
   state.focusDate=clamp(state,state.focusDate);state.view=state.focusDate.slice(0,7);show(state);dialog.dataset.markerState='loading';drawCalendar(true);
-  try{const records=state.scope?await readRecords():[];if(active===state&&state.source.isConnected){state.marks=recordedDates(records,state.scope);state.loaded=true;dialog.dataset.markerState='loaded';drawCalendar(false);}}catch{if(active===state){state.markerError=true;dialog.dataset.markerState='error';drawCalendar(false);}}
+  try{const records=state.scope?await readRecords():[];if(active===state&&state.source.isConnected){state.marks=recordedDates(records,state.scope);state.loaded=true;dialog.dataset.markerState='loaded';syncCalendarCells();}}catch{if(active===state){state.markerError=true;dialog.dataset.markerState='error';const key=dialog.querySelector('.calendar-key');if(key)key.append(' · 暂时未能读取标记');}}
  }
  function gridFocus(state){dialog.querySelector(`[data-day="${state.focusDate}"]`)?.focus({preventScroll:true});}
- function drawCalendar(focus=false){
+ function drawCalendar(focus=false,direction=0){
   const s=active;if(s?.kind!=='date')return;
   const old=doc.activeElement,oldDay=old?.dataset?.day,oldAction=old?.dataset?.picker,oldClock=old?.dataset?.clock,oldValue=old?.value;
   const days=calendarDays(s.view),today=localDay(),previous=shiftCalendarMonth(s.view+'-01',-1),next=shiftCalendarMonth(s.view+'-01',1);
@@ -126,11 +126,13 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
   const body=s.panel==='months'?`<div class="calendar-year"><button type="button" data-picker="year-prev" aria-label="上一年">−</button><label>年份<input type="number" data-picker-year min="1" max="9999" value="${year}" inputmode="numeric"></label><button type="button" data-picker="year-next" aria-label="下一年">＋</button></div><div class="calendar-months">${Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0'),key=String(year).padStart(4,'0')+'-'+m,disabled=s.minDay&&key<s.minDay.slice(0,7)||s.maxDay&&key>s.maxDay.slice(0,7);return `<button type="button" data-month="${key}" ${disabled?'disabled':''} aria-pressed="${month===i+1}">${i+1} 月</button>`;}).join('')}</div><button type="button" class="text-button" data-picker="back-days">返回日历</button>`:
    `<div class="calendar-weekdays" aria-hidden="true">${['一','二','三','四','五','六','日'].map(x=>`<span>${x}</span>`).join('')}</div><div class="calendar-grid" role="grid" aria-label="${year}年${month}月">${Array.from({length:6},(_,i)=>`<div role="row">${days.slice(i*7,i*7+7).map(cell).join('')}</div>`).join('')}</div>`;
   dialog.innerHTML=heading(s.title)+`<div class="picker-body"><div class="calendar-toolbar"><button type="button" data-picker="prev" aria-label="上个月" ${!previous||s.minDay&&previous.slice(0,7)<s.minDay.slice(0,7)?'disabled':''}>‹</button><button type="button" class="calendar-month-title" data-picker="months" aria-expanded="${s.panel==='months'}"><span aria-live="polite">${year} 年 ${month} 月</span><small>选择年月</small></button><button type="button" data-picker="next" aria-label="下个月" ${!next||s.maxDay&&next.slice(0,7)>s.maxDay.slice(0,7)?'disabled':''}>›</button></div>${body}${s.scope?`<p class="calendar-key"><i aria-hidden="true"></i>${e(s.scope.label)}${s.scope.groupId||s.scope.categoryId?' · 当前分类':''}记过的日期${s.markerError?' · 暂时未能读取标记':''}</p>`:''}${s.mode==='datetime-local'?`<div class="calendar-clock"><span>时间</span><label>小时<input type="text" data-clock="hour" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" value="${e(s.hour)}" placeholder="时" aria-label="小时，0到23"></label><b>:</b><label>分钟<input type="text" data-clock="minute" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" value="${e(s.minute)}" placeholder="分" aria-label="分钟，0到59"></label></div>`:''}<p class="picker-error" role="alert" id="picker-error"></p><div class="calendar-shortcuts"><button type="button" class="text-button" data-picker="today" ${!bounds(s,today)?'disabled':''}>${s.mode==='datetime-local'?'此刻':'今天'}</button>${!s.required?'<button type="button" class="text-button" data-picker="clear">留空</button>':''}</div><div class="picker-footer"><button type="button" class="secondary" data-picker="cancel">取消</button><button type="button" class="primary" data-picker="apply">确认选择</button></div></div>`;
+  if(direction)pickerMotion.play(dialog.querySelector('.picker-body'),{axis:'x',direction,offset:10,duration:170});
   if(focus){gridFocus(s);return;}
   if(oldClock){const input=dialog.querySelector(`[data-clock=${oldClock}]`);if(input){input.value=oldValue;input.focus({preventScroll:true});}}
   else if(oldDay)gridFocus(s);else if(oldAction)dialog.querySelector(`[data-picker="${oldAction}"]`)?.focus({preventScroll:true});
  }
- function chooseDay(day){const s=active;if(!bounds(s,day))return;s.selected=day;s.focusDate=day;s.view=day.slice(0,7);drawCalendar(true);}
+ function syncCalendarCells(){const s=active;if(s?.kind!=='date')return;const today=localDay();for(const button of dialog.querySelectorAll('[data-day]')){const day=button.dataset.day,recorded=s.marks.has(day);button.classList.toggle('has-entry',recorded);button.classList.toggle('is-selected',day===s.selected);button.setAttribute('aria-selected',String(day===s.selected));button.tabIndex=day===s.focusDate&&!button.disabled?0:-1;button.setAttribute('aria-label',day.slice(0,4)+'年'+Number(day.slice(5,7))+'月'+Number(day.slice(8))+'日'+(day===today?'，今天':'')+(recorded?'，已有'+s.scope.label+'记录':''));}}
+ function chooseDay(day){const s=active;if(!bounds(s,day))return;const prior=s.view;s.selected=day;s.focusDate=day;s.view=day.slice(0,7);if(prior===s.view){syncCalendarCells();gridFocus(s);}else drawCalendar(true,s.view<prior?-1:1);}
  function commitDate(clear=false){
   const s=active;if(clear){const source=s.source,old=source.value;close();source.value='';syncDate(s);if(old!=='')emit(source);return;}
   let raw=s.selected;
@@ -156,9 +158,9 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
   if(b.dataset.option!==undefined){const source=active.source,value=b.dataset.option,old=source.value;close();source.value=value;choices.get(source)?.sync();if(old!==value)emit(source);return;}
   const action=b.dataset.picker;if(action==='cancel'){close();return;}if(active.kind!=='date')return;const s=active;
   if(action==='apply'){commitDate();return;}if(action==='clear'){commitDate(true);return;}
-  if(action==='today'){s.selected=localDay();s.focusDate=s.selected;s.view=s.selected.slice(0,7);if(s.mode==='datetime-local'){const now=new Date();s.hour=String(now.getHours()).padStart(2,'0');s.minute=String(now.getMinutes()).padStart(2,'0');}s.panel='days';drawCalendar(true);return;}
-  if(action==='months'||action==='back-days'){s.panel=action==='months'?'months':'days';drawCalendar();if(s.panel==='months')dialog.querySelector('[data-picker-year]')?.focus();return;}
-  const delta={prev:-1,next:1,'year-prev':-12,'year-next':12}[action];if(delta){const next=shiftCalendarMonth(s.view+'-01',delta);if(next){s.view=next.slice(0,7);s.focusDate=clamp(s,next);drawCalendar();}}
+  if(action==='today'){s.selected=localDay();s.focusDate=s.selected;s.view=s.selected.slice(0,7);if(s.mode==='datetime-local'){const now=new Date();s.hour=String(now.getHours()).padStart(2,'0');s.minute=String(now.getMinutes()).padStart(2,'0');}s.panel='days';drawCalendar(true,1);return;}
+  if(action==='months'||action==='back-days'){s.panel=action==='months'?'months':'days';drawCalendar(false,action==='months'?1:-1);if(s.panel==='months')dialog.querySelector('[data-picker-year]')?.focus();return;}
+  const delta={prev:-1,next:1,'year-prev':-12,'year-next':12}[action];if(delta){const next=shiftCalendarMonth(s.view+'-01',delta);if(next){s.view=next.slice(0,7);s.focusDate=clamp(s,next);drawCalendar(false,delta<0?-1:1);}}
  });
  dialog.addEventListener('input',event=>{if(event.target.dataset.clock){active[event.target.dataset.clock]=event.target.value;const error=dialog.querySelector('#picker-error');if(error)error.textContent='';}if(event.target.hasAttribute('data-option-search')){const query=event.target.value.toLocaleLowerCase();dialog.querySelectorAll('[data-option]').forEach(b=>b.hidden=!b.textContent.toLocaleLowerCase().includes(query));optionTabs();}});
  dialog.addEventListener('change',event=>{if(event.target.hasAttribute('data-picker-year')){const year=Number(event.target.value);if(Number.isInteger(year)&&year>=1&&year<=9999){active.view=String(year).padStart(4,'0')+active.view.slice(4);drawCalendar();dialog.querySelector('[data-picker-year]')?.focus();}else{event.target.value=active.view.slice(0,4);dialog.querySelector('#picker-error').textContent='年份请填写1–9999。';}}});
@@ -176,5 +178,5 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
  doc.addEventListener('input',event=>{if(dates.has(event.target))syncDate(dates.get(event.target));});
  doc.addEventListener('change',event=>{if(dates.has(event.target)){syncDate(dates.get(event.target));orderDates();}});
  const observer=new MutationObserver(()=>{if(!scheduled&&!disposed){scheduled=true;queueMicrotask(refresh);}});observer.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['disabled','list']});refresh();
- return {refresh,close,dispose(){pickerMotion.dispose();disposed=true;observer.disconnect();doc.removeEventListener('pointerdown',pointerMode,true);doc.removeEventListener('keydown',keyboardMode,true);close();dialog.remove();}};
+ return {refresh,close,dispose(){layerEpoch++;clearTimeout(closeTimer);pickerMotion.dispose();disposed=true;observer.disconnect();doc.removeEventListener('pointerdown',pointerMode,true);doc.removeEventListener('keydown',keyboardMode,true);close();dialog.remove();}};
 }

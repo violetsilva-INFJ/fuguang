@@ -1,19 +1,73 @@
-// Motion is paint-only, never a gate before the next action or a source of data.
+// Small shared motion vocabulary. Data and hit testing never wait for a tween.
+const ease='cubic-bezier(.22,.8,.24,1)';
+const prefersStill=()=>matchMedia('(prefers-reduced-motion: reduce)').matches||document.body.classList.contains('reduce-motion');
 export function createViewMotion(root){
- let animation=null;const media=matchMedia('(prefers-reduced-motion: reduce)'),reduced=()=>media.matches||document.body.classList.contains('reduce-motion');
- const cancel=()=>{animation?.cancel();animation=null;},changed=()=>{if(reduced())cancel();};
+ let animation=null,target=null;const media=matchMedia('(prefers-reduced-motion: reduce)');
+ const cancel=()=>{animation?.cancel();animation=null;target=null;},changed=()=>{if(prefersStill())cancel();};
  const observer=new MutationObserver(changed);observer.observe(document.body,{attributes:true,attributeFilter:['class']});media.addEventListener('change',changed);
- return {cancel,play(target=root,{offset=4,duration=130}={}){cancel();if(reduced()||!target?.isConnected||!target.animate)return;const a=target.animate([{opacity:.6,transform:`translateY(${offset}px)`},{opacity:1,transform:'translateY(0)'}],{duration,easing:'cubic-bezier(.2,.7,.2,1)'});animation=a;a.finished.catch(()=>{}).finally(()=>{if(animation===a)animation=null;});},dispose(){cancel();observer.disconnect();media.removeEventListener('change',changed);}};
+ return {cancel,play(next=root,{offset=8,duration=180,direction=1,axis='y',startOpacity=.72}={}){const current=target===next&&animation?getComputedStyle(next):null,from=current?{opacity:current.opacity,transform:current.transform}:{opacity:startOpacity,transform:axis==='x'?`translate3d(${offset*direction}px,0,0)`:`translate3d(0,${offset}px,0)`};cancel();if(prefersStill()||!next?.isConnected||!next.animate)return;target=next;const a=next.animate([from,{opacity:1,transform:'translate3d(0,0,0)'}],{duration,easing:ease});animation=a;a.finished.catch(()=>{}).finally(()=>{if(animation===a){animation=null;target=null;}});},dispose(){cancel();observer.disconnect();media.removeEventListener('change',changed);}};
 }
-// Small local transition controller; opening a new form invalidates pending close work.
+
+// The live DOM always receives input. An isolated, inert picture of a bounded
+// outgoing tree can fade above it, but is discarded on the next interaction.
+// Native View Transitions temporarily remove their source from hit testing,
+// which loses a drag beginning while a chart snapshot is on screen.
+export function createPageTransition({fallback}={}){
+ let ghost=null,animation=null,sheet=null;const media=matchMedia('(prefers-reduced-motion: reduce)');
+ function clear(){animation?.cancel();animation=null;ghost?.remove();ghost=null;}
+ function stop(){clear();fallback?.cancel();}
+ function picture(source){
+  if(!source||!source.isConnected||source.querySelectorAll('*').length>1800||document.body.classList.contains('solid-material'))return null;
+  const rect=source.getBoundingClientRect();if(!rect.width||!rect.height||rect.bottom<=0||rect.top>=innerHeight)return null;
+  try{
+   if(!sheet){const next=new CSSStyleSheet();next.replaceSync([...document.styleSheets].flatMap(s=>[...s.cssRules].map(r=>r.cssText)).join('\n'));sheet=next;}
+   const host=document.createElement('div'),shadow=host.attachShadow({mode:'closed'}),copy=source.cloneNode(true),style=getComputedStyle(source);copy.querySelectorAll('text,title').forEach(node=>node.remove());
+   host.className='motion-picture';host.inert=true;host.setAttribute('aria-hidden','true');Object.assign(host.style,{position:'fixed',left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px',font:style.font,color:style.color,letterSpacing:style.letterSpacing});
+   shadow.adoptedStyleSheets=[sheet];Object.assign(copy.style,{position:'relative',inset:'auto',width:'100%',height:'100%',minHeight:'0',maxHeight:'none',maxWidth:'none',margin:'0',overflow:'hidden',transform:'none',opacity:'1'});shadow.append(copy);document.body.append(host);copy.scrollTop=source.scrollTop;
+   return host;
+  }catch{return null;}
+ }
+ const changed=()=>{if(prefersStill()||document.hidden)stop();};
+ const observer=new MutationObserver(changed);observer.observe(document.body,{attributes:true,attributeFilter:['class']});media.addEventListener('change',changed);document.addEventListener('visibilitychange',changed);
+ const interrupt=()=>stop();for(const event of ['pointerdown','keydown','wheel','touchmove'])document.addEventListener(event,interrupt,{capture:true,passive:true});window.addEventListener('resize',interrupt,{passive:true});window.visualViewport?.addEventListener('resize',interrupt,{passive:true});
+ return {get pending(){return false;},flush:stop,cancel:stop,run(update,{scope='page',direction=1}={}){
+  stop();const still=prefersStill()||document.hidden,source=scope==='chart'?document.querySelector('.trend-chart'):null,outgoing=still?null:picture(source);
+  try{update();}catch(error){outgoing?.remove();return Promise.reject(error);}
+  if(still)return Promise.resolve();ghost=outgoing;const target=document.querySelector(scope==='chart'?'.trend-chart':'#main');fallback?.play(target,{axis:scope==='chart'?'y':'x',direction,offset:scope==='chart'?3:8,duration:190,startOpacity:scope==='chart'?.72:.9});
+  if(ghost){const node=ghost,a=node.animate([{opacity:1,transform:'translate3d(0,0,0)'},{opacity:0,transform:`translate3d(${-4*direction}px,0,0)`}],{duration:160,easing:ease});animation=a;a.finished.catch(()=>{}).finally(()=>{if(animation===a){animation=null;ghost=null;node.remove();}});}
+  return Promise.resolve();
+ },dispose(){stop();observer.disconnect();media.removeEventListener('change',changed);document.removeEventListener('visibilitychange',changed);for(const event of ['pointerdown','keydown','wheel','touchmove'])document.removeEventListener(event,interrupt,true);window.removeEventListener('resize',interrupt);window.visualViewport?.removeEventListener('resize',interrupt);}};
+}
+
 export function createModalController(dialog,{fallback=()=>document.querySelector('#main')}={}){
- let sequence=0,closing=false,timer=null,returnFocus=null,scrollY=0,scrollRoot=null;
- const reduced=()=>document.body.classList.contains('reduce-motion')||matchMedia('(prefers-reduced-motion: reduce)').matches;
- const stop=()=>{clearTimeout(timer);timer=null;dialog.getAnimations().forEach(a=>a.cancel());};
- function show(content,{scrollTop=0,focus=null}={}){const wasOpen=dialog.open;sequence++;stop();closing=false;dialog.inert=false;dialog.classList.remove('is-closing');if(!wasOpen){returnFocus=document.activeElement;scrollRoot=document.querySelector('#page-scroll')??document.scrollingElement;scrollY=scrollRoot.scrollTop;}if(typeof content==='string')dialog.innerHTML=content;else dialog.replaceChildren(...content);document.body.classList.add('modal-open');if(!wasOpen)dialog.showModal();dialog.scrollTop=scrollTop;if(focus?.isConnected&&dialog.contains(focus))focus.focus({preventScroll:true});if(!reduced())dialog.animate([{opacity:0,transform:'translateY(9px)'},{opacity:1,transform:'translateY(0)'}],{duration:150,easing:'cubic-bezier(.2,.7,.2,1)'});}
- function close({immediate=false}={}){if(closing&&!immediate)return;const token=++sequence;stop();closing=true;dialog.classList.add('is-closing');dialog.inert=true;const finish=()=>{if(token!==sequence)return;stop();dialog.close();dialog.innerHTML='';dialog.inert=false;dialog.classList.remove('is-closing');closing=false;document.body.classList.remove('modal-open');scrollRoot?.scrollTo({top:scrollY,behavior:'instant'});const target=returnFocus?.isConnected&&!dialog.contains(returnFocus)?returnFocus:fallback();target?.focus?.({preventScroll:true});};if(!dialog.open||immediate||reduced()){finish();return;}const animation=dialog.animate([{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(7px)'}],{duration:120,easing:'ease-in',fill:'forwards'});animation.finished.then(finish).catch(()=>{});timer=setTimeout(finish,160);}
- const motion=matchMedia('(prefers-reduced-motion: reduce)'),onMotion=()=>{if(reduced()){if(closing)close({immediate:true});else stop();}};motion.addEventListener?.('change',onMotion);
- return {show,close,cancelMotion:onMotion,dispose(){sequence++;stop();motion.removeEventListener?.('change',onMotion);if(dialog.open)dialog.close();dialog.inert=false;document.body.classList.remove('modal-open');}};
+ let sequence=0,timer=null,returnFocus=null,scrollY=0,scrollRoot=null,stage=0,closing=false,contentAnimations=[];
+ const stopContent=()=>{contentAnimations.forEach(a=>a.cancel());contentAnimations=[];};
+ const stopCleanup=()=>{clearTimeout(timer);timer=null;};
+ function show(content,{scrollTop=0,focus=null,direction='forward'}={}){
+  const wasOpen=dialog.open,wasClosing=closing,before=wasOpen?dialog.getBoundingClientRect():null;sequence++;stopCleanup();stopContent();closing=false;dialog.inert=false;dialog.removeAttribute('aria-hidden');dialog.classList.remove('is-closing');
+  if(!wasOpen){if(!wasClosing)stage=0;returnFocus=document.activeElement;scrollRoot=document.querySelector('#page-scroll')??document.scrollingElement;scrollY=scrollRoot.scrollTop;}
+  if(typeof content==='string')dialog.innerHTML=content;else dialog.replaceChildren(...content);
+  document.body.classList.add('modal-open');dialog.style.height='auto';if(!wasOpen)dialog.showModal();
+  const natural=dialog.scrollHeight+2,minimum=420;
+  stage=Math.max(stage,natural,minimum);dialog.style.height=stage+'px';
+  // Layout happens once. The panel then moves as a rigid surface, without text scaling.
+  if(wasOpen&&before&&!prefersStill()){const previous=dialog.style.transition,currentOpacity=getComputedStyle(dialog).opacity;dialog.style.opacity=currentOpacity;dialog.style.transition='none';dialog.style.transform='none';const after=dialog.getBoundingClientRect(),delta=before.top-after.top;dialog.style.transform=`translate3d(0,${delta}px,0)`;dialog.getBoundingClientRect();dialog.style.transition=previous;dialog.style.transform='';dialog.style.opacity='';}
+  dialog.scrollTop=scrollTop;const target=focus?.isConnected&&dialog.contains(focus)?focus:dialog.querySelector('.sheet-top button');target?.focus?.({preventScroll:true});
+  if(wasOpen&&!prefersStill()){const sign=direction==='back'?-1:1;for(const node of [dialog.querySelector('.sheet-top h2'),dialog.querySelector(':scope>.sheet-body')].filter(Boolean)){const a=node.animate([{opacity:.65,transform:`translate3d(${sign*(node.tagName==='H2'?8:16)}px,0,0)`},{opacity:1,transform:'translate3d(0,0,0)'}],{duration:190,easing:ease});contentAnimations.push(a);a.finished.catch(()=>{});}}
+ }
+ function close({immediate=false}={}){
+  const token=++sequence;stopCleanup();stopContent();closing=true;dialog.inert=true;dialog.setAttribute('aria-hidden','true');dialog.classList.add('is-closing');dialog.style.transform='';dialog.close();document.body.classList.remove('modal-open');
+  scrollRoot?.scrollTo({top:scrollY,behavior:'instant'});const target=returnFocus?.isConnected&&!dialog.contains(returnFocus)?returnFocus:fallback();target?.focus?.({preventScroll:true});
+  const finish=()=>{if(token!==sequence||dialog.open)return;dialog.replaceChildren();dialog.inert=false;dialog.classList.remove('is-closing');dialog.style.height='';stage=0;closing=false;timer=null;};
+  if(immediate||prefersStill())finish();else timer=setTimeout(finish,260);
+ }
+ const media=matchMedia('(prefers-reduced-motion: reduce)'),still=()=>{if(prefersStill()){stopContent();if(closing)close({immediate:true});}};
+ // A keyboard/orientation change invalidates the previous surface's FLIP offset.
+ // Settle it immediately, before the new viewport frame is measured.
+ const resized=()=>{if(!dialog.open)return;stopContent();const previous=dialog.style.transition;dialog.style.transition='none';dialog.style.transform='';dialog.getBoundingClientRect();dialog.style.transition=previous;};
+ media.addEventListener('change',still);
+ window.addEventListener('resize',resized,{passive:true});window.visualViewport?.addEventListener('resize',resized,{passive:true});
+ return {show,close,cancelMotion:still,dispose(){sequence++;stopCleanup();stopContent();media.removeEventListener('change',still);window.removeEventListener('resize',resized);window.visualViewport?.removeEventListener('resize',resized);if(dialog.open)dialog.close();dialog.replaceChildren();dialog.style.height='';dialog.inert=false;document.body.classList.remove('modal-open');}};
 }
 
 // Keep one non-scrolling frame. Only #page-scroll owns long-page scrolling.
@@ -41,13 +95,19 @@ export function installViewportLayout(win=window,doc=document){
  return {dispose(){disposed=true;if(frame!==null)win.cancelAnimationFrame(frame);targets.forEach(([target,event])=>target?.removeEventListener(event,schedule));['height','top','bottom'].forEach(key=>style.removeProperty('--app-viewport-'+key));}};
 }
 
-// Feedback never gates actions. Repeated clicks replace their own short animation.
+// Press follows the finger/key; release can reverse immediately from its current pose.
 export function installButtonFeedback(doc=document){
- const active=new Set(),byButton=new WeakMap(),motion=matchMedia('(prefers-reduced-motion: reduce)');
- const reduced=()=>motion.matches||doc.body.classList.contains('reduce-motion');
- function cancel(){for(const animation of active)animation.cancel();active.clear();}
- function click(event){const b=event.target.closest?.('button');if(!b||b.disabled||b.closest('.tabbar')||reduced())return;byButton.get(b)?.cancel();if(!b.animate)return;const animation=b.animate([{transform:'translateY(1px) scale(.98)'},{transform:'translateY(0) scale(1)'}],{duration:170,easing:'cubic-bezier(.2,.7,.2,1)'});byButton.set(b,animation);active.add(animation);animation.finished.catch(()=>{}).finally(()=>active.delete(animation));}
- const observer=new MutationObserver(()=>{if(reduced())cancel();});observer.observe(doc.body,{attributes:true,attributeFilter:['class']});
- doc.addEventListener('click',click,true);motion.addEventListener('change',cancel);doc.addEventListener('visibilitychange',()=>{if(doc.hidden)cancel();});
- return {cancel,dispose(){cancel();observer.disconnect();doc.removeEventListener('click',click,true);motion.removeEventListener('change',cancel);}};
+ const media=matchMedia('(prefers-reduced-motion: reduce)'),animations=new Map(),released=new WeakMap();let pressed=null;
+ const reduced=()=>media.matches||doc.body.classList.contains('reduce-motion');
+ function animate(button,down){if(!button?.isConnected||button.disabled||reduced())return;const from=getComputedStyle(button).transform;animations.get(button)?.cancel();const a=button.animate([{transform:from==='none'?'translate3d(0,0,0) scale(1)':from},{transform:down?'translate3d(0,.6px,0) scale(.985)':'translate3d(0,0,0) scale(1)'}],{duration:down?90:180,easing:ease,fill:down?'forwards':'none'});animations.set(button,a);a.finished.catch(()=>{}).finally(()=>{if(animations.get(button)===a&&!down)animations.delete(button);});}
+ const eligible=target=>{const b=target.closest?.('button');return b&&!b.disabled&&!b.closest('.tabbar')?b:null;};
+ function release(){if(!pressed)return;const b=pressed;pressed=null;const hadFeedback=animations.has(b);if(hadFeedback)released.set(b,performance.now());if(b.isConnected&&hadFeedback)animate(b,false);else{animations.get(b)?.cancel();animations.delete(b);}}
+ const pointer=event=>{if(!event.isPrimary||event.button!==0)return;release();pressed=eligible(event.target);if(pressed)animate(pressed,true);};
+ const key=event=>{if(!['Enter',' '].includes(event.key)||event.repeat)return;release();pressed=eligible(event.target);if(pressed)animate(pressed,true);};
+ const keyup=event=>{if(['Enter',' '].includes(event.key))release();};
+ const click=event=>{const b=eligible(event.target);if(!b||reduced()||performance.now()-(released.get(b)??-1000)<250)return;animate(b,true);queueMicrotask(()=>{released.set(b,performance.now());animate(b,false);});};
+ const cancel=()=>{pressed=null;for(const a of animations.values())a.cancel();animations.clear();};
+ const changed=()=>{if(reduced()||doc.hidden)cancel();};const observer=new MutationObserver(changed);observer.observe(doc.body,{attributes:true,attributeFilter:['class']});media.addEventListener('change',changed);doc.addEventListener('visibilitychange',changed);
+ doc.addEventListener('pointerdown',pointer,true);doc.addEventListener('pointerup',release,true);doc.addEventListener('pointercancel',release,true);doc.addEventListener('keydown',key,true);doc.addEventListener('keyup',keyup,true);doc.addEventListener('click',click,true);
+ return {cancel,dispose(){cancel();observer.disconnect();media.removeEventListener('change',changed);doc.removeEventListener('visibilitychange',changed);for(const[n,f]of[['pointerdown',pointer],['pointerup',release],['pointercancel',release],['keydown',key],['keyup',keyup],['click',click]])doc.removeEventListener(n,f,true);}};
 }
