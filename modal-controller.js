@@ -1,3 +1,10 @@
+// Motion is paint-only, never a gate before the next action or a source of data.
+export function createViewMotion(root){
+ let animation=null;const media=matchMedia('(prefers-reduced-motion: reduce)'),reduced=()=>media.matches||document.body.classList.contains('reduce-motion');
+ const cancel=()=>{animation?.cancel();animation=null;},changed=()=>{if(reduced())cancel();};
+ const observer=new MutationObserver(changed);observer.observe(document.body,{attributes:true,attributeFilter:['class']});media.addEventListener('change',changed);
+ return {cancel,play(target=root,{offset=4,duration=130}={}){cancel();if(reduced()||!target?.isConnected||!target.animate)return;const a=target.animate([{opacity:.6,transform:`translateY(${offset}px)`},{opacity:1,transform:'translateY(0)'}],{duration,easing:'cubic-bezier(.2,.7,.2,1)'});animation=a;a.finished.catch(()=>{}).finally(()=>{if(animation===a)animation=null;});},dispose(){cancel();observer.disconnect();media.removeEventListener('change',changed);}};
+}
 // Small local transition controller; opening a new form invalidates pending close work.
 export function createModalController(dialog,{fallback=()=>document.querySelector('#main')}={}){
  let sequence=0,closing=false,timer=null,returnFocus=null,scrollY=0,scrollRoot=null;

@@ -324,8 +324,9 @@ export function mergeRecords(existing, incoming) {
   assertBackupCapacity(records);
   return {records, added:added.length, skipped};
 }
+export function backupCapacity(records){const bytes=new TextEncoder().encode(JSON.stringify(records)).length+4096;return {bytes,limit:MAX_FILE,count:records.length,countLimit:MAX_RECORDS,near:bytes>=MAX_FILE*.85||records.length>=MAX_RECORDS*.85};}
 export function assertBackupCapacity(records) {
-  assert(new TextEncoder().encode(JSON.stringify(records)).length + 4096 <= MAX_FILE, '本机记录已接近单份备份容量上限。请先导出并妥善保管，再整理旧记录。此次操作没有保存。');
+ assert(backupCapacity(records).bytes<=MAX_FILE,'单份备份的12 MiB容量已满，本次未保存。请先导出备份，并保留当前填写内容。');
 }
 export function shiftDay(day,delta){const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+delta);return localDay(d);}
 export function dayOccurrence(records,metric){
@@ -337,8 +338,9 @@ export function dayOccurrence(records,metric){
 export function summarize(records,days=14,now=new Date(),metric='anxiety'){
  const keys=Array.from({length:days},(_,i)=>shiftDay(localDay(now),i-days+1));
  const scored=r=>['moment','narrative','daily'].includes(r.type)&&Number.isFinite(r[metric]);
+ const byDay=new Map(keys.map(day=>[day,[]]));for(const r of records)byDay.get(r.localDate)?.push(r);
  const rows=keys.map(day=>{
-  const all=records.filter(r=>r.localDate===day), ratings=all.filter(scored), daily=all.find(r=>r.type==='daily'),sleep=all.find(r=>r.type==='sleep')??daily;
+  const all=byDay.get(day), ratings=all.filter(scored), daily=all.find(r=>r.type==='daily'),sleep=all.find(r=>r.type==='sleep')??daily;
   return {day,count:ratings.length,anxiety:ratings.length?ratings.reduce((sum,r)=>sum+r[metric],0)/ratings.length:null,
    mood:daily?.mood??null,sleepHours:sleep?.sleepHours??null,exerciseMinutes:daily?.exerciseMinutes??null,
    medicationCount:all.filter(r=>r.type==='medication').length||(!all.some(r=>r.type==='checkin'&&r.domain==='medication'&&r.status==='some')&&(daily?.medicationStatus==='none'||all.some(r=>r.type==='checkin'&&r.domain==='medication'&&r.status==='none'))?0:null),

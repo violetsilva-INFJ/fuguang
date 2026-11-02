@@ -1,4 +1,5 @@
 import {escapeHTML as e,localDay} from './core.js';
+import {createViewMotion} from './modal-controller.js';
 
 // Calendar arithmetic uses civil date strings and UTC noon, never UTC parsing of
 // a date-only input followed by local getters. Stored record dates stay intact.
@@ -98,11 +99,12 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
   doc.querySelectorAll('input[data-picker-mode]').forEach(input=>{const item=dates.get(input);if(item)syncDate(item);});
   doc.querySelectorAll('select[hidden]').forEach(select=>choices.get(select)?.sync());
  }
+ const pickerMotion=createViewMotion(dialog);
  function show(state){
-  if(active)close();active=state;state.host=state.source.closest('dialog')??doc.querySelector('#page-scroll');state.scroll=state.host?.scrollTop??0;state.button.setAttribute('aria-expanded','true');dialog.showModal();
+  if(active)close();active=state;state.host=state.source.closest('dialog')??doc.querySelector('#page-scroll');state.scroll=state.host?.scrollTop??0;state.button.setAttribute('aria-expanded','true');dialog.showModal();pickerMotion.play(dialog,{offset:6,duration:120});
  }
  function close(){
-  if(!active)return;const s=active;active=null;dialog.close();dialog.replaceChildren();s.button.setAttribute('aria-expanded','false');if(s.button.isConnected)s.button.focus({preventScroll:true});if(s.host?.isConnected)s.host.scrollTop=s.scroll;
+  if(!active)return;const s=active;active=null;pickerMotion.cancel();dialog.close();dialog.replaceChildren();s.button.setAttribute('aria-expanded','false');if(s.button.isConnected)s.button.focus({preventScroll:true});if(s.host?.isConnected)s.host.scrollTop=s.scroll;
  }
  function heading(title){return `<header class="picker-header"><h2 id="picker-title">${e(title)}</h2><button type="button" class="picker-close" data-picker="cancel" aria-label="关闭选择">×</button></header>`;}
  function bounds(state,day){return validDay(day)&&(!state.minDay||day>=state.minDay)&&(!state.maxDay||day<=state.maxDay);}
@@ -174,5 +176,5 @@ export function createPickers({doc=document,readRecords=async()=>[]}={}){
  doc.addEventListener('input',event=>{if(dates.has(event.target))syncDate(dates.get(event.target));});
  doc.addEventListener('change',event=>{if(dates.has(event.target)){syncDate(dates.get(event.target));orderDates();}});
  const observer=new MutationObserver(()=>{if(!scheduled&&!disposed){scheduled=true;queueMicrotask(refresh);}});observer.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['disabled','list']});refresh();
- return {refresh,close,dispose(){disposed=true;observer.disconnect();doc.removeEventListener('pointerdown',pointerMode,true);doc.removeEventListener('keydown',keyboardMode,true);close();dialog.remove();}};
+ return {refresh,close,dispose(){pickerMotion.dispose();disposed=true;observer.disconnect();doc.removeEventListener('pointerdown',pointerMode,true);doc.removeEventListener('keydown',keyboardMode,true);close();dialog.remove();}};
 }

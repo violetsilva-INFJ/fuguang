@@ -4,12 +4,14 @@ const changeChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('f
 const notifyChange=()=>changeChannel?.postMessage({type:'records-changed'});
 export function openStorage() {
   return new Promise((resolve,reject) => {
-    const req = indexedDB.open('fuguang-private-v1', 2);
+    const req = indexedDB.open('fuguang-private-v1', 3);
     req.onupgradeneeded = () => {
       if(!req.result.objectStoreNames.contains('records')) {
         const store = req.result.createObjectStore('records', {keyPath:'id'});
         store.createIndex('dailyDate', 'dailyKey', {unique:true});
       }
+      const store=req.transaction.objectStore('records');
+      if(!store.indexNames.contains('eventDate'))store.createIndex('eventDate','localDate',{unique:false});
     };
     req.onsuccess = () => { db = req.result; db.onversionchange = () => db.close(); resolve(); };
     req.onerror = () => reject(new Error('本机存储暂时不可用。请使用普通浏览模式，并允许网站保存数据。'));
@@ -24,10 +26,14 @@ export function allRecords() {
     req.onerror=()=>reject(new Error('读取本机记录失败'));
   });
 }
+export function recordsOnDay(day){
+ return new Promise((resolve,reject)=>{const tx=db.transaction('records','readonly'),req=tx.objectStore('records').index('eventDate').getAll(day);req.onsuccess=()=>{try{resolve(req.result.map(validateRecord));}catch{reject(new Error('当天记录格式异常，请保留本机数据。'));}};req.onerror=()=>reject(new Error('读取当天记录失败，请再试一次。'));});
+}
+const quotaMessage='设备存储空间不足，本次未保存。当前填写仍保留，请先复制内容或导出备份。';
 export function saveRecord(record, previousUpdatedAt = null) {
   const r=validateRecord(record);
   return new Promise((resolve,reject)=> {
-    const tx=db.transaction('records','readwrite'), store=tx.objectStore('records'); let failure;
+    const tx=db.transaction('records','readwrite'), store=tx.objectStore('records'); let failure,committedRecords;
     const req=store.getAll();
     req.onsuccess=()=> {
       try {
@@ -38,10 +44,11 @@ export function saveRecord(record, previousUpdatedAt = null) {
         if(r.sourceNarrativeId&&all.some(x=>x.id!==r.id&&x.sourceNarrativeId===r.sourceNarrativeId&&x.sourceFragmentKey===r.sourceFragmentKey))throw new Error('这段叙述已经另存为生活事件，请查看已有记录，避免重复。');
         if(r.type==='daily'&&((r.medicationStatus==='none'&&previous?.medicationStatus!=='none'&&all.some(x=>x.type==='medication'&&x.localDate===r.localDate))||(r.caffeineStatus==='none'&&previous?.caffeineStatus!=='none'&&all.some(x=>x.type==='caffeine'&&x.localDate===r.localDate))))throw new Error('这一天已有相关事件，请核对新的“确认没有”选择。');
         store.put(persisted(r));
-      } catch(e) {failure=e.message||'保存未成功，当前内容仍保留。';tx.abort();}
+        committedRecords=next;
+      } catch(e) {failure=e.name==='QuotaExceededError'?quotaMessage:e.message||'保存未成功，当前内容仍保留。';tx.abort();}
     };
-    tx.oncomplete=()=>{notifyChange();resolve();};
-    tx.onabort=tx.onerror=()=>reject(new Error(failure || (tx.error?.name==='ConstraintError' ? '这一天已有每日记录，请从拾记中打开修改。' : '保存未成功。请检查设备空间，并保留当前填写内容。')));
+    tx.oncomplete=()=>{notifyChange();resolve(committedRecords);};
+    tx.onabort=tx.onerror=()=>reject(new Error(failure || (tx.error?.name==='QuotaExceededError'?quotaMessage:tx.error?.name==='ConstraintError' ? '这一天已有每日记录，请从拾记中打开修改。' : '保存未成功。请检查设备空间，并保留当前填写内容。')));
   });
 }
 export function deleteRecord(record) {
@@ -61,7 +68,7 @@ export function importRecords(incoming) {
         const existing=req.result.map(validateRecord); result=mergeRecords(existing,incoming);
         const ids=new Set(existing.map(r=>r.id));
         for (const r of result.records) if (!ids.has(r.id)) store.add(persisted(r));
-      } catch(e) { failure=e.message; tx.abort(); }
+      } catch(e) { failure=e.name==='QuotaExceededError'?'设备存储空间不足，未导入；原记录保持不变。':e.message; tx.abort(); }
     };
     tx.oncomplete=()=>{notifyChange();resolve(result);}; tx.onabort=tx.onerror=()=>reject(new Error(failure || '导入未成功，本机记录没有改变。'));
   });
