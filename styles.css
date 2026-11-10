@@ -42,7 +42,9 @@ body.modal-open .page-scroll{overflow:hidden}dialog.is-closing{pointer-events:no
 /* One motion vocabulary. Surface geometry changes once, then only compositing moves. */
 :root{--motion-ease:cubic-bezier(.22,.8,.24,1);--motion-sheet:220ms;--motion-content:190ms;--motion-sign:1}
 #editor,#app-picker,#confirm{display:none;opacity:0;transform:translate3d(0,var(--dialog-entry-y,24px),0);pointer-events:none;transition:transform var(--motion-sheet) var(--motion-ease),opacity 160ms ease,display var(--motion-sheet) allow-discrete,overlay var(--motion-sheet) allow-discrete}
-#editor[open],#app-picker[open],#confirm[open]{display:block;opacity:1;transform:translate3d(0,0,0);pointer-events:auto}
+/* Do not leave native modal surfaces in a transformed layer after motion.
+   Their visual and touch geometry must follow the viewport after rotation. */
+#editor[open],#app-picker[open],#confirm[open]{display:block;opacity:1;transform:none;pointer-events:auto}
 #app-picker{--dialog-entry-y:14px}#confirm{--dialog-entry-y:10px}
 #editor::backdrop,#app-picker::backdrop,#confirm::backdrop{background:#22382c48;backdrop-filter:none;-webkit-backdrop-filter:none;opacity:0;pointer-events:none;transition:opacity 180ms ease,display var(--motion-sheet) allow-discrete,overlay var(--motion-sheet) allow-discrete}
 #editor[open]::backdrop,#app-picker[open]::backdrop,#confirm[open]::backdrop{opacity:1;pointer-events:auto}

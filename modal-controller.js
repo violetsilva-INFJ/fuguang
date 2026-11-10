@@ -74,7 +74,7 @@ export function createModalController(dialog,{fallback=()=>document.querySelecto
 // VisualViewport accounts for a keyboard/panning without reading any input.
 export function installViewportLayout(win=window,doc=document){
  const viewport=win.visualViewport,style=doc.documentElement.style;
- let frame=null,last='',disposed=false;
+ let frame=null,last='',disposed=false,settleTimers=[];
  function update(){
   frame=null;if(disposed)return;
   const layout=Math.max(doc.documentElement.clientHeight,win.innerHeight||0);
@@ -90,9 +90,15 @@ export function installViewportLayout(win=window,doc=document){
   style.setProperty('--app-viewport-bottom',bottom+'px');
  }
  const schedule=()=>{if(!disposed&&frame===null)frame=win.requestAnimationFrame(update);};
- const targets=[[win,'resize'],[win,'orientationchange'],[win,'pageshow'],[viewport,'resize'],[viewport,'scroll']];
- targets.forEach(([target,event])=>target?.addEventListener(event,schedule,{passive:true}));update();
- return {dispose(){disposed=true;if(frame!==null)win.cancelAnimationFrame(frame);targets.forEach(([target,event])=>target?.removeEventListener(event,schedule));['height','top','bottom'].forEach(key=>style.removeProperty('--app-viewport-'+key));}};
+ // Safari can dispatch orientation/resize before VisualViewport has settled.
+ // One RAF may still see the old height or keyboard offset, with no final event.
+ // Re-read for a bounded period; never reload the page or recreate its forms.
+ const clearSettling=()=>{settleTimers.forEach(id=>win.clearTimeout(id));settleTimers=[];};
+ const settle=()=>{if(disposed)return;clearSettling();schedule();settleTimers=[60,180,360,720].map(delay=>win.setTimeout(schedule,delay));};
+ const visible=()=>{if(!doc.hidden)settle();};
+ const targets=[[win,'resize',settle],[win,'orientationchange',settle],[win.screen?.orientation,'change',settle],[win,'pageshow',settle],[viewport,'resize',settle],[viewport,'scroll',schedule],[doc,'visibilitychange',visible]];
+ targets.forEach(([target,event,handler])=>target?.addEventListener(event,handler,{passive:true}));update();
+ return {dispose(){disposed=true;clearSettling();if(frame!==null)win.cancelAnimationFrame(frame);targets.forEach(([target,event,handler])=>target?.removeEventListener(event,handler));['height','top','bottom'].forEach(key=>style.removeProperty('--app-viewport-'+key));}};
 }
 
 // Press follows the finger/key; release can reverse immediately from its current pose.
