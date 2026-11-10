@@ -67,3 +67,10 @@ body.reduce-motion #editor,body.reduce-motion #app-picker,body.reduce-motion #co
 body.reduce-motion .motion-picture{display:none!important}
 #editor{background:radial-gradient(ellipse at 95% 8%,#e9eeda60,transparent 55%),linear-gradient(165deg,#faf9f0,#f3f4e9)}
 @media(max-width:759px){.field input:not([type=range]),.field textarea,.search{font-size:16px}}
+
+/* Keep the editable surface above the keyboard. Long text scrolls internally
+   rather than placing its last lines below the visual viewport. */
+.field textarea,textarea.search{max-height:max(72px,calc(var(--app-viewport-height,100dvh) - 160px));min-height:min(104px,max(72px,calc(var(--app-viewport-height,100dvh) - 160px)));overflow-y:auto}
+:where(dialog,.page-scroll){scroll-padding-block:84px 20px}
+:where(input,textarea,[contenteditable=true]){scroll-margin-block:12px 20px}
+@media(max-width:759px){input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea{font-size:16px}}

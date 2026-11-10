@@ -70,6 +70,30 @@ export function createModalController(dialog,{fallback=()=>document.querySelecto
  return {show,close,cancelMotion:still,dispose(){sequence++;stopCleanup();stopContent();media.removeEventListener('change',still);window.removeEventListener('resize',resized);window.visualViewport?.removeEventListener('resize',resized);if(dialog.open)dialog.close();dialog.replaceChildren();dialog.style.height='';dialog.inert=false;document.body.classList.remove('modal-open');}};
 }
 
+// Minimum scroll needed to reveal a focused control, without moving already
+// visible fields. Tall controls align their top; CSS bounds textareas so the
+// browser can keep their caret visible by scrolling inside the textarea.
+export function focusScrollDelta(rect,top,bottom){
+ if(![rect.top,rect.bottom,top,bottom].every(Number.isFinite)||bottom<=top)return 0;
+ if(rect.bottom-rect.top>bottom-top)return rect.top-top;
+ return rect.top<top?rect.top-top:rect.bottom>bottom?rect.bottom-bottom:0;
+}
+function revealFocusedControl(win,doc,top,height){
+ const input=doc.activeElement;
+ if(!input?.matches?.('textarea,input:not([type=hidden]):not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),[contenteditable="true"]')||input.disabled||input.readOnly||!input.isConnected)return;
+ // Never scroll an obscured parent editor while a child modal is active.
+ const dialog=input.closest?.('dialog');
+ if(dialog&&!dialog.matches(':modal'))return;
+ for(let host=input.parentElement;host&&host!==doc.body;host=host.parentElement){
+  const css=win.getComputedStyle(host);
+  if(!/(auto|scroll)/.test(css.overflowY)||host.clientHeight>=host.scrollHeight)continue;
+  const box=host.getBoundingClientRect(),header=host.querySelector(':scope > .sheet-top,:scope > .picker-header');
+  const head=header?.getBoundingClientRect(),upper=Math.max(top,box.top,head?.bottom??box.top)+12,lower=Math.min(top+height,box.bottom)-16;
+  const delta=focusScrollDelta(input.getBoundingClientRect(),upper,lower);
+  if(Math.abs(delta)>1)host.scrollTop+=delta;
+ }
+}
+
 // Keep one non-scrolling frame. Only #page-scroll owns long-page scrolling.
 // VisualViewport accounts for a keyboard/panning without reading any input.
 export function installViewportLayout(win=window,doc=document){
@@ -84,10 +108,11 @@ export function installViewportLayout(win=window,doc=document){
   if(!Number.isFinite(height)||height<=0||!layout)return;
   const visible=Math.min(height,layout),top=Math.max(0,Math.min(viewport?.offsetTop||0,layout-visible));
   const bottom=Math.max(0,layout-visible-top),next=[visible,top,bottom].map(n=>Math.round(n*100)/100).join(':');
-  if(next===last)return;last=next;
+  if(next!==last){last=next;
   style.setProperty('--app-viewport-height',visible+'px');
   style.setProperty('--app-viewport-top',top+'px');
-  style.setProperty('--app-viewport-bottom',bottom+'px');
+  style.setProperty('--app-viewport-bottom',bottom+'px');}
+  revealFocusedControl(win,doc,top,visible);
  }
  const schedule=()=>{if(!disposed&&frame===null)frame=win.requestAnimationFrame(update);};
  // Safari can dispatch orientation/resize before VisualViewport has settled.
@@ -96,7 +121,7 @@ export function installViewportLayout(win=window,doc=document){
  const clearSettling=()=>{settleTimers.forEach(id=>win.clearTimeout(id));settleTimers=[];};
  const settle=()=>{if(disposed)return;clearSettling();schedule();settleTimers=[60,180,360,720].map(delay=>win.setTimeout(schedule,delay));};
  const visible=()=>{if(!doc.hidden)settle();};
- const targets=[[win,'resize',settle],[win,'orientationchange',settle],[win.screen?.orientation,'change',settle],[win,'pageshow',settle],[viewport,'resize',settle],[viewport,'scroll',schedule],[doc,'visibilitychange',visible]];
+ const targets=[[win,'resize',settle],[win,'orientationchange',settle],[win.screen?.orientation,'change',settle],[win,'pageshow',settle],[viewport,'resize',settle],[viewport,'scroll',schedule],[doc,'visibilitychange',visible],[doc,'focusin',settle],[doc,'input',schedule],[doc,'compositionend',settle]];
  targets.forEach(([target,event,handler])=>target?.addEventListener(event,handler,{passive:true}));update();
  return {dispose(){disposed=true;clearSettling();if(frame!==null)win.cancelAnimationFrame(frame);targets.forEach(([target,event,handler])=>target?.removeEventListener(event,handler));['height','top','bottom'].forEach(key=>style.removeProperty('--app-viewport-'+key));}};
 }

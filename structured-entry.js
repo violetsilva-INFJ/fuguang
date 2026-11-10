@@ -64,7 +64,7 @@ export function createRecordControls(root){
  }
  function sleepSources(){const form=root.querySelector('#record-form');if(!form)return;for(const key of ['nightmares','grinding','snoring']){const status=form.elements['sleep-'+key],source=form.elements['sleep-'+key+'Source'];if(status&&source)source.closest('.choice-field').hidden=status.value==='unknown'&&source.value==='unknown';}}
  const onSleepChange=event=>{if(active&&event.target.name?.startsWith('sleep-'))sleepSources();};root.addEventListener('change',onSleepChange);
- function refresh(){const form=root.querySelector('#record-form');if(!form)return;form.querySelectorAll('select:not([data-entry-choice])').forEach(choice);for(const input of form.querySelectorAll('input[type=number]:not([data-precision-control])')){const n=input.name,type=form.dataset.type,c=n==='sleepHours'?{min:0,max:24,step:.1,unit:'小时'}:type==='symptom'&&n==='intensity'?{min:0,max:10,step:1,unit:'分'}:type==='activity'&&n==='durationMinutes'?{min:0,max:240,step:1,unit:'分钟'}:n==='napMinutes'?{min:1,max:180,step:1,unit:'分钟'}:null;if(c)numeric(input,c);}sleepSources();}
+ function refresh(){const form=root.querySelector('#record-form');if(!form)return;form.querySelectorAll('select:not([data-entry-choice])').forEach(choice);for(const input of form.querySelectorAll('input[type=number]:not([data-precision-control])')){const n=input.name,type=form.dataset.type,c=type==='symptom'&&n==='intensity'?{min:0,max:10,step:1,unit:'分'}:null;if(c)numeric(input,c);}sleepSources();}
  function clear(){observers.splice(0).forEach(o=>o.disconnect());cleanups.splice(0).forEach(fn=>fn());}
  return {refresh,clear,suspend(){active=false;},resume(){active=true;sleepSources();},dispose(){clear();root.removeEventListener('change',onSleepChange);}};
 }
