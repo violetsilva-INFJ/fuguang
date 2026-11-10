@@ -74,3 +74,11 @@ body.reduce-motion .motion-picture{display:none!important}
 :where(dialog,.page-scroll){scroll-padding-block:84px 20px}
 :where(input,textarea,[contenteditable=true]){scroll-margin-block:12px 20px}
 @media(max-width:759px){input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea{font-size:16px}}
+
+/* Native dialog's UA position is absolute. Keep its geometry in the layout
+   viewport while Safari pans that viewport during keyboard focus. */
+dialog{position:fixed}
+[data-focus-space]::after{content:"";display:block;flex:none;height:var(--focus-scroll-space,0px);pointer-events:none}
+
+/* A focused multiline field fits the measured space below its actual sticky header. */
+textarea[data-focus-height]{min-height:min(104px,var(--focus-edit-height))!important;max-height:var(--focus-edit-height)!important;overflow-y:auto}

@@ -78,19 +78,30 @@ export function focusScrollDelta(rect,top,bottom){
  if(rect.bottom-rect.top>bottom-top)return rect.top-top;
  return rect.top<top?rect.top-top:rect.bottom>bottom?rect.bottom-bottom:0;
 }
-function revealFocusedControl(win,doc,top,height){
+export function revealFocusedControl(win,doc,top,height){
  const input=doc.activeElement;
  if(!input?.matches?.('textarea,input:not([type=hidden]):not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),[contenteditable="true"]')||input.disabled||input.readOnly||!input.isConnected)return;
  // Never scroll an obscured parent editor while a child modal is active.
  const dialog=input.closest?.('dialog');
  if(dialog&&!dialog.matches(':modal'))return;
+ let editHeight=Infinity;
  for(let host=input.parentElement;host&&host!==doc.body;host=host.parentElement){
   const css=win.getComputedStyle(host);
-  if(!/(auto|scroll)/.test(css.overflowY)||host.clientHeight>=host.scrollHeight)continue;
+  if(!/(auto|scroll)/.test(css.overflowY))continue;
   const box=host.getBoundingClientRect(),header=host.querySelector(':scope > .sheet-top,:scope > .picker-header');
   const head=header?.getBoundingClientRect(),upper=Math.max(top,box.top,head?.bottom??box.top)+12,lower=Math.min(top+height,box.bottom)-16;
+  if(input.tagName==='TEXTAREA'&&input.style&&lower>upper){
+   const available=Math.min(editHeight,Math.max(1,Math.floor(lower-upper)));editHeight=available;
+   input.dataset.focusHeight='true';input.style.setProperty('--focus-edit-height',available+'px');
+  }
   const delta=focusScrollDelta(input.getBoundingClientRect(),upper,lower);
-  if(Math.abs(delta)>1)host.scrollTop+=delta;
+  if(Math.abs(delta)>1){
+   const before=host.scrollTop;host.scrollTop+=delta;
+   // At the end of a short form, scrollIntoView has no room to lift a low field.
+   // Reserve only the measured missing space, never an assumed keyboard size.
+   const remaining=delta-(host.scrollTop-before);
+   if(remaining>1&&host.style&&host.dataset){host.dataset.focusSpace='true';const prior=parseFloat(host.style.getPropertyValue('--focus-scroll-space'))||0;host.style.setProperty('--focus-scroll-space',Math.min(height,prior+remaining+Math.max(0,box.bottom-input.getBoundingClientRect().bottom)+20)+'px');host.scrollTop+=remaining+20;}
+  }
  }
 }
 
@@ -98,7 +109,11 @@ function revealFocusedControl(win,doc,top,height){
 // VisualViewport accounts for a keyboard/panning without reading any input.
 export function installViewportLayout(win=window,doc=document){
  const viewport=win.visualViewport,style=doc.documentElement.style;
- let frame=null,last='',disposed=false,settleTimers=[];
+ let frame=null,last='',disposed=false,settleTimers=[],focusTimer=null,focusGeometry='';
+ const editing=()=>doc.activeElement?.matches?.('textarea,input:not([type=hidden]):not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),[contenteditable=true]');
+ const clearHeights=()=>doc.querySelectorAll?.('[data-focus-height]').forEach(input=>{if(input!==doc.activeElement||!editing()){delete input.dataset.focusHeight;input.style.removeProperty('--focus-edit-height');}});
+ const clearSpace=()=>doc.querySelectorAll?.('[data-focus-space]').forEach(host=>{delete host.dataset.focusSpace;host.style.removeProperty('--focus-scroll-space');});
+ function watchFocus(){if(disposed)return;clearHeights();win.clearTimeout(focusTimer);focusTimer=null;if(doc.hidden)return;if(editing()){const geometry=[viewport?.height,viewport?.offsetTop,viewport?.scale,win.innerHeight].join(':');if(geometry!==focusGeometry){focusGeometry=geometry;schedule();}focusTimer=win.setTimeout(watchFocus,120);}else{focusGeometry='';clearSpace();}}
  function update(){
   frame=null;if(disposed)return;
   const layout=Math.max(doc.documentElement.clientHeight,win.innerHeight||0);
@@ -120,10 +135,10 @@ export function installViewportLayout(win=window,doc=document){
  // Re-read for a bounded period; never reload the page or recreate its forms.
  const clearSettling=()=>{settleTimers.forEach(id=>win.clearTimeout(id));settleTimers=[];};
  const settle=()=>{if(disposed)return;clearSettling();schedule();settleTimers=[60,180,360,720].map(delay=>win.setTimeout(schedule,delay));};
- const visible=()=>{if(!doc.hidden)settle();};
- const targets=[[win,'resize',settle],[win,'orientationchange',settle],[win.screen?.orientation,'change',settle],[win,'pageshow',settle],[viewport,'resize',settle],[viewport,'scroll',schedule],[doc,'visibilitychange',visible],[doc,'focusin',settle],[doc,'input',schedule],[doc,'compositionend',settle]];
+ const visible=()=>{if(doc.hidden){win.clearTimeout(focusTimer);focusTimer=null;clearSettling();if(frame!==null){win.cancelAnimationFrame(frame);frame=null;}}else{settle();watchFocus();}};
+ const targets=[[win,'resize',settle],[win,'orientationchange',settle],[win.screen?.orientation,'change',settle],[win,'pageshow',settle],[viewport,'resize',settle],[viewport,'scroll',schedule],[doc,'visibilitychange',visible],[doc,'focusin',settle],[doc,'input',schedule],[doc,'compositionend',settle],[doc,'focusin',watchFocus],[doc,'focusout',()=>{win.setTimeout(watchFocus,0);}],[viewport,'scrollend',settle],[win,'scroll',settle]];
  targets.forEach(([target,event,handler])=>target?.addEventListener(event,handler,{passive:true}));update();
- return {dispose(){disposed=true;clearSettling();if(frame!==null)win.cancelAnimationFrame(frame);targets.forEach(([target,event,handler])=>target?.removeEventListener(event,handler));['height','top','bottom'].forEach(key=>style.removeProperty('--app-viewport-'+key));}};
+ return {dispose(){disposed=true;clearSettling();win.clearTimeout(focusTimer);clearSpace();doc.querySelectorAll?.('[data-focus-height]').forEach(input=>{delete input.dataset.focusHeight;input.style.removeProperty('--focus-edit-height');});if(frame!==null)win.cancelAnimationFrame(frame);targets.forEach(([target,event,handler])=>target?.removeEventListener(event,handler));['height','top','bottom'].forEach(key=>style.removeProperty('--app-viewport-'+key));}};
 }
 
 // Press follows the finger/key; release can reverse immediately from its current pose.
